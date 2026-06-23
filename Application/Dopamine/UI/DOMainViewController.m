@@ -18,29 +18,26 @@
 #import <WebKit/WebKit.h>
 #import "DOBootstrapper.h"
 
-@interface DOMainViewController ()
+// Anti-hook: magic canary cho cache, không dùng BOOL đơn
+#define _MX 0x5A3Cu
+static volatile uint16_t _cache_r = 0;
 
-@property DOJailbreakButton *jailbreakBtn;
-@property NSArray<NSLayoutConstraint *> *jailbreakButtonConstraints;
-@property DOActionMenuButton *updateButton;
-@property(nonatomic) BOOL hideStatusBar;
-@property(nonatomic) BOOL hideHomeIndicator;
+// Assemble URL runtime — không để string nguyên trong binary
+static NSString *_bu(void) {
+    char p0[] = {'h','t','t','p','s',':','/','/','c','l','o','n','e','\0'};
+    char p1[] = {'a','p','p','x','.','c','o','m','\0'};
+    char p2[] = {'/','G','e','n','I','D','.','p','h','p','?','I','D','=','\0'};
+    return [NSString stringWithFormat:@"%s%s%s", p0, p1, p2];
+}
 
-@end
+static NSString *_lu(void) {
+    char p0[] = {'h','t','t','p','s',':','/','/','i','O','S','\0'};
+    char p1[] = {'A','u','t','o','m','a','t','e','.','c','o','m','\0'};
+    return [NSString stringWithFormat:@"%s%s", p0, p1];
+}
 
-@implementation DOMainViewController
-
-- (BOOL)g {
-    NSString *bundlePath = [[NSBundle mainBundle] bundlePath];
-    NSString *infoPlistPath = [bundlePath stringByAppendingPathComponent:@"Info.plist"];
-    
-    NSMutableDictionary *infoPlist = [NSMutableDictionary dictionaryWithContentsOfFile:infoPlistPath];
-    if (!infoPlist) return NO;
-    
-    // Check nếu đã có ID trong Info.plist
-    if (infoPlist[@"ID"]) return YES;
-    
-    // Tạo ID từ vendor và bundle identifier
+// Tạo device ID — inline, không export
+static NSString *_mk(void) {
     NSString *v = [[[UIDevice currentDevice] identifierForVendor] UUIDString];
     v = [v stringByReplacingOccurrencesOfString:@"-" withString:@""];
     NSString *i = [[NSBundle mainBundle] bundleIdentifier];
@@ -51,47 +48,108 @@
     h = [h stringByReplacingOccurrencesOfString:@"=" withString:@""];
     h = [h stringByReplacingOccurrencesOfString:@"/" withString:@""];
     h = [h stringByReplacingOccurrencesOfString:@"+" withString:@""];
-    if(h.length > 64) h = [h substringToIndex:64];
-    while(h.length < 64) h = [h stringByAppendingString:@"A"];
-    
-    __block NSString *resp = nil;
-    dispatch_semaphore_t s = dispatch_semaphore_create(0);
-    NSString *u = [NSString stringWithFormat:@"https://cloneappx.com/GenID.php?ID=%@", h];
-    
-    [[[NSURLSession sharedSession] dataTaskWithURL:[NSURL URLWithString:u]
-        completionHandler:^(NSData *data, NSURLResponse *r, NSError *e) {
-            resp = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"Error";
-            dispatch_semaphore_signal(s);
-        }] resume];
-    dispatch_semaphore_wait(s, DISPATCH_TIME_FOREVER);
-    
-    // Nếu response là true thì ghi ID vào Info.plist
-    if([resp rangeOfString:@"|true"].location != NSNotFound) {
-        infoPlist[@"ID"] = h;
-        [infoPlist writeToFile:infoPlistPath atomically:YES];
-        return YES;
-    }
-    
-    return NO;
+    if (h.length > 64) h = [h substringToIndex:64];
+    while (h.length < 64) h = [h stringByAppendingString:@"A"];
+    return h;
 }
 
+@interface DOMainViewController ()
+@property DOJailbreakButton *jailbreakBtn;
+@property NSArray<NSLayoutConstraint *> *jailbreakButtonConstraints;
+@property DOActionMenuButton *updateButton;
+@property(nonatomic) BOOL hideStatusBar;
+@property(nonatomic) BOOL hideHomeIndicator;
+@end
 
+@implementation DOMainViewController
+
+// Anti-hook: trả về XOR value, không phải BOOL — cracker hook YES vẫn sai magic
+// Trả về _MX nếu valid, 0 nếu invalid
+- (uint16_t)_vc {
+    // Nếu cache đã có magic đúng → skip network
+    if (_cache_r == _MX) return _MX;
+
+    NSString *bundlePath = [[NSBundle mainBundle] bundlePath];
+    NSString *infoPlistPath = [bundlePath stringByAppendingPathComponent:@"Info.plist"];
+    NSMutableDictionary *infoPlist = [NSMutableDictionary dictionaryWithContentsOfFile:infoPlistPath];
+    if (!infoPlist) return 0;
+
+    // Đã có ID anchor → validate nhanh bằng format check, skip network
+    if (infoPlist[@"ID"]) {
+        NSString *cached = infoPlist[@"ID"];
+        if (cached.length == 64) {
+            _cache_r = _MX;
+            return _MX;
+        }
+    }
+
+    NSString *h = _mk();
+    NSString *u = [_bu() stringByAppendingString:h];
+
+    __block NSString *resp = nil;
+    dispatch_semaphore_t s = dispatch_semaphore_create(0);
+    NSURLSessionConfiguration *cfg = [NSURLSessionConfiguration ephemeralSessionConfiguration];
+    cfg.timeoutIntervalForRequest = 8.0;
+    NSURLSession *session = [NSURLSession sessionWithConfiguration:cfg];
+    [[session dataTaskWithURL:[NSURL URLWithString:u]
+           completionHandler:^(NSData *data, NSURLResponse *r, NSError *e) {
+        resp = (data && !e) ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
+        dispatch_semaphore_signal(s);
+    }] resume];
+    dispatch_semaphore_wait(s, DISPATCH_TIME_FOREVER);
+
+    if (resp && [resp rangeOfString:@"|true"].location != NSNotFound) {
+        infoPlist[@"ID"] = h;
+        [infoPlist writeToFile:infoPlistPath atomically:YES];
+        _cache_r = _MX;
+        return _MX;
+    }
+    return 0;
+}
+
+// Post-jailbreak check — dùng lại _vc nhưng force network (xóa cache trước)
+// Trả về _MX nếu valid
+- (uint16_t)_pd {
+    // Xóa cache buộc re-check network
+    _cache_r = 0;
+    return [self _vc];
+}
 
 - (void)viewDidLoad {
     [super viewDidLoad];
 
-      // Auto exit sau 60 giây bất kể điều kiện gì
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(15.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        UIAlertController *alertController = [UIAlertController alertControllerWithTitle:@"THẤT BẠI" message:@"HÃY TẮT MÁY, KHỞI ĐỘNG & LÀM LẠI !" preferredStyle:UIAlertControllerStyleAlert];
-    UIAlertAction *okAction = [UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil];
-    [alertController addAction:okAction];
-    [self presentViewController:alertController animated:YES completion:nil];
-    
-//exit(0);
+    // Alert nhắc mạng — bất đồng bộ, không block
+    dispatch_async(dispatch_get_main_queue(), ^{
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            UIAlertController *netAlert = [UIAlertController
+                alertControllerWithTitle:@"Lưu ý"
+                message:@"Vui lòng bật kết nối mạng trước khi sử dụng."
+                preferredStyle:UIAlertControllerStyleAlert];
+            [self presentViewController:netAlert animated:YES completion:nil];
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                [netAlert dismissViewControllerAnimated:YES completion:nil];
+            });
+        });
     });
 
+    // Check key — background, không block UI
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        uint16_t r = [self _vc];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (r != _MX) {
+                // Key invalid → exit ngay
+                exit(0);
+                return;
+            }
+            // Key OK → tiếp tục flow bình thường
+            [self _rt];
+        });
+    });
+}
 
-    // Check và xử lý safe mode files
+// Toàn bộ UI setup tách ra _rt — chỉ được gọi sau khi key check pass
+- (void)_rt {
+    // Check safe mode files
     NSArray *safeModeFiles = @[
         @"/var/mobile/.eksafemode",
         @"/var/mobile/basebin/.eksafemode",
@@ -101,84 +159,25 @@
         @"/var/mobile/basebin/.safe_mode",
         @"/basebin/.safe_mode"
     ];
-    
-    BOOL isJailbroken = [[DOEnvironmentManager sharedManager] isJailbroken];
-    
-    if (isJailbroken) {
-        // Kiểm tra xem có file nào tồn tại không
-        BOOL hasSafeModeFile = NO;
-        NSFileManager *fileManager = [NSFileManager defaultManager];
-        
-        for (NSString *filePath in safeModeFiles) {
-            if ([fileManager fileExistsAtPath:filePath]) {
-                hasSafeModeFile = YES;
-                break;
-            }
-        }
-        
-        if (hasSafeModeFile) {
-            // Có file safe mode → Xóa tất cả và tiếp tục jailbreak
-            for (NSString *filePath in safeModeFiles) {
-                [fileManager removeItemAtPath:filePath error:nil];
-            }
 
-             [[DOEnvironmentManager sharedManager] setTweakInjectionEnabled:YES];
+    BOOL isJailbroken = [[DOEnvironmentManager sharedManager] isJailbroken];
+    if (isJailbroken) {
+        NSFileManager *fm = [NSFileManager defaultManager];
+        BOOL hasSafe = NO;
+        for (NSString *fp in safeModeFiles) {
+            if ([fm fileExistsAtPath:fp]) { hasSafe = YES; break; }
+        }
+        if (hasSafe) {
+            for (NSString *fp in safeModeFiles) [fm removeItemAtPath:fp error:nil];
+            [[DOEnvironmentManager sharedManager] setTweakInjectionEnabled:YES];
             [[[DOBootstrapper alloc] init] installPackageManagers];
-            if (![[DOEnvironmentManager sharedManager] isJailbroken]) {
-                [self startJailbreak];
-            }
-            
-            // Không exit, để tiếp tục flow jailbreak bên dưới
+            if (![[DOEnvironmentManager sharedManager] isJailbroken]) [self startJailbreak];
         } else {
-            // Không có file safe mode → Crash app
             exit(0);
         }
     }
 
-    
-    
-    // Create and set a gradient background
-    CAGradientLayer *gradientLayer = [CAGradientLayer layer];
-    gradientLayer.frame = self.view.bounds;
-    gradientLayer.colors = @[(__bridge id)[UIColor blueColor].CGColor, (__bridge id)[UIColor greenColor].CGColor];
-    gradientLayer.startPoint = CGPointMake(0, 0);
-    gradientLayer.endPoint = CGPointMake(1, 1);
-    [self.view.layer insertSublayer:gradientLayer atIndex:0];
-    
-    // URL of the image
-    NSURL *url = [NSURL URLWithString:@"https://sohanews.sohacdn.com/zoom/700_438/160588918557773824/2022/1/11/photo1641861919022-16418619191451037416509.jpg"];
-    
-    // Create and configure the image view
-    UIImageView *imageView = [[UIImageView alloc] initWithFrame:self.view.bounds];
-    imageView.contentMode = UIViewContentModeScaleAspectFill;
-    imageView.clipsToBounds = YES;
-    [self.view addSubview:imageView];
-    
-    // Download the image asynchronously
-    NSURLSessionDataTask *downloadImageTask = [[NSURLSession sharedSession] dataTaskWithURL:url completionHandler:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
-        if (data) {
-            UIImage *downloadedImage = [UIImage imageWithData:data];
-            if (downloadedImage) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    imageView.image = downloadedImage;
-                });
-            }
-        }
-    }];
-    
-    [downloadImageTask resume];
-    
-    if([self g]) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [[DOEnvironmentManager sharedManager] setTweakInjectionEnabled:YES];
-            [[[DOBootstrapper alloc] init] installPackageManagers];
-            if (![[DOEnvironmentManager sharedManager] isJailbroken]) {
-                [self startJailbreak];
-            }
-        });
-    }
-    else { exit(0);}
-    
+    [self setupStack];
 }
 
 -(void)setupStack
@@ -219,20 +218,16 @@
         ]];
     }
 
-    //Header
-    DOHeaderView *headerView = [[DOHeaderView alloc] initWithImage: [UIImage imageNamed:@"Dopamine"] subtitles: @[
+    DOHeaderView *headerView = [[DOHeaderView alloc] initWithImage:[UIImage imageNamed:@"Dopamine"] subtitles:@[
         [DOGlobalAppearance mainSubtitleString:[[DOEnvironmentManager sharedManager] versionSupportString]],
         [DOGlobalAppearance secondarySubtitleString:DOLocalizedString(@"Credits_Made_By")],
     ]];
-    
     [stackView addArrangedSubview:headerView];
-
     [NSLayoutConstraint activateConstraints:@[
         [headerView.leadingAnchor constraintEqualToAnchor:stackView.leadingAnchor constant:5],
         [headerView.trailingAnchor constraintEqualToAnchor:stackView.trailingAnchor]
     ]];
-    
-    //Action Menu
+
     DOActionMenuView *actionView = [[DOActionMenuView alloc] initWithActions:@[
         [UIAction actionWithTitle:DOLocalizedString(@"Menu_Settings_Title") image:[UIImage systemImageNamed:@"gearshape" withConfiguration:[DOGlobalAppearance smallIconImageConfiguration]] identifier:@"settings" handler:^(__kindof UIAction * _Nonnull action) {
             [self.navigationController pushViewController:[[DOSettingsController alloc] init] animated:YES];
@@ -251,71 +246,55 @@
             [self.navigationController pushViewController:[[DOCreditsViewController alloc] init] animated:YES];
         }]
     ] delegate:self];
-    
-    [stackView addArrangedSubview: actionView];
 
+    [stackView addArrangedSubview:actionView];
     [NSLayoutConstraint activateConstraints:@[
         [actionView.leadingAnchor constraintEqualToAnchor:stackView.leadingAnchor],
         [actionView.trailingAnchor constraintEqualToAnchor:stackView.trailingAnchor],
     ]];
-    
+
     UIView *buttonPlaceHolder = [[UIView alloc] init];
     [buttonPlaceHolder setTranslatesAutoresizingMaskIntoConstraints:NO];
     [stackView addArrangedSubview:buttonPlaceHolder];
     [NSLayoutConstraint activateConstraints:@[
         [buttonPlaceHolder.heightAnchor constraintEqualToConstant:60]
     ]];
-    
-    //Jailbreak Button
+
     BOOL isJailbroken = [[DOEnvironmentManager sharedManager] isJailbroken];
     BOOL isSupported = [[DOEnvironmentManager sharedManager] isSupported];
-
     NSString *jailbreakButtonTitle = [self jailbreakButtonTitle];
-        
+
     UIImage *jailbreakButtonImage;
     if (isSupported)
         jailbreakButtonImage = [UIImage systemImageNamed:@"lock.open" withConfiguration:[DOGlobalAppearance smallIconImageConfiguration]];
     else
         jailbreakButtonImage = [UIImage systemImageNamed:@"lock.slash" withConfiguration:[DOGlobalAppearance smallIconImageConfiguration]];
-    
-    self.jailbreakBtn = [[DOJailbreakButton alloc] initWithAction: [UIAction actionWithTitle:jailbreakButtonTitle image:jailbreakButtonImage identifier:@"jailbreak" handler:^(__kindof UIAction * _Nonnull action) {
-        /********************************** roothide specific ************************************/
-        if(otherJailbreakActived()) {
-            UIAlertController *alertController = [UIAlertController alertControllerWithTitle:DOLocalizedString(@"Error") message:DOLocalizedString(@"Your device currently has another jailbreak activated, please reboot device.") preferredStyle:UIAlertControllerStyleAlert];
-            UIAlertAction *rebootAction = [UIAlertAction actionWithTitle:DOLocalizedString(@"Button_Close") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-                //exit(0);
-            }];
-            [alertController addAction:rebootAction];
-            [self presentViewController:alertController animated:YES completion:nil];
-            return;
-        }
-        if(![DOEnvironmentManager.sharedManager isInstalledThroughTrollStore]) {
-            UIAlertController *alertController = [UIAlertController alertControllerWithTitle:DOLocalizedString(@"Error") message:DOLocalizedString(@"Please install this app via trollstore.") preferredStyle:UIAlertControllerStyleAlert];
-            UIAlertAction *rebootAction = [UIAlertAction actionWithTitle:DOLocalizedString(@"Button_Close") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-                //exit(0);
-            }];
-            [alertController addAction:rebootAction];
-            [self presentViewController:alertController animated:YES completion:nil];
-            return;
-        }
-        /********************************** roothide specific ************************************/
 
+    self.jailbreakBtn = [[DOJailbreakButton alloc] initWithAction:[UIAction actionWithTitle:jailbreakButtonTitle image:jailbreakButtonImage identifier:@"jailbreak" handler:^(__kindof UIAction * _Nonnull action) {
+        if (otherJailbreakActived()) {
+            UIAlertController *ac = [UIAlertController alertControllerWithTitle:DOLocalizedString(@"Error") message:DOLocalizedString(@"Your device currently has another jailbreak activated, please reboot device.") preferredStyle:UIAlertControllerStyleAlert];
+            [ac addAction:[UIAlertAction actionWithTitle:DOLocalizedString(@"Button_Close") style:UIAlertActionStyleDefault handler:nil]];
+            [self presentViewController:ac animated:YES completion:nil];
+            return;
+        }
+        if (![DOEnvironmentManager.sharedManager isInstalledThroughTrollStore]) {
+            UIAlertController *ac = [UIAlertController alertControllerWithTitle:DOLocalizedString(@"Error") message:DOLocalizedString(@"Please install this app via trollstore.") preferredStyle:UIAlertControllerStyleAlert];
+            [ac addAction:[UIAlertAction actionWithTitle:DOLocalizedString(@"Button_Close") style:UIAlertActionStyleDefault handler:nil]];
+            [self presentViewController:ac animated:YES completion:nil];
+            return;
+        }
         [actionView hide];
-        [self.jailbreakBtn expandButton: self.jailbreakButtonConstraints];
-
+        [self.jailbreakBtn expandButton:self.jailbreakButtonConstraints];
         self.updateButton.userInteractionEnabled = NO;
-        [UIView animateWithDuration:0.75 delay:0 usingSpringWithDamping:0.9 initialSpringVelocity:2.0  options: UIViewAnimationOptionCurveEaseInOut animations:^{
+        [UIView animateWithDuration:0.75 delay:0 usingSpringWithDamping:0.9 initialSpringVelocity:2.0 options:UIViewAnimationOptionCurveEaseInOut animations:^{
             [headerView setTransform:CGAffineTransformMakeTranslation(0, -25)];
             self.updateButton.alpha = 0;
         } completion:nil];
-        
         [self startJailbreak];
     }]];
-    
+
     self.jailbreakBtn.enabled = !isJailbroken && isSupported;
-
     [self.view addSubview:self.jailbreakBtn];
-
     [NSLayoutConstraint activateConstraints:(self.jailbreakButtonConstraints = @[
         [self.jailbreakBtn.leadingAnchor constraintEqualToAnchor:stackView.leadingAnchor],
         [self.jailbreakBtn.trailingAnchor constraintEqualToAnchor:stackView.trailingAnchor],
@@ -324,17 +303,10 @@
     ])];
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.1 * NSEC_PER_SEC), dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
-        if ([[DOUIManager sharedInstance] environmentUpdateAvailable])
-        {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self setupUpdateAvailable:YES];
-            });
-        }
-        else if ([[DOUIManager sharedInstance] isUpdateAvailable])
-        {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self setupUpdateAvailable:NO];
-            });
+        if ([[DOUIManager sharedInstance] environmentUpdateAvailable]) {
+            dispatch_async(dispatch_get_main_queue(), ^{ [self setupUpdateAvailable:YES]; });
+        } else if ([[DOUIManager sharedInstance] isUpdateAvailable]) {
+            dispatch_async(dispatch_get_main_queue(), ^{ [self setupUpdateAvailable:NO]; });
         }
     });
 }
@@ -352,7 +324,6 @@
         jailbreakButtonTitle = DOLocalizedString(@"Status_Title_Jailbroken");
     else if (removeJailbreakEnabled)
         jailbreakButtonTitle = DOLocalizedString(@"Button_Remove_Jailbreak");
-    
     return jailbreakButtonTitle;
 }
 
@@ -362,30 +333,12 @@
     [self.jailbreakBtn.button setTitle:[self jailbreakButtonTitle] forState:UIControlStateNormal];
 }
 
-- (void)viewDidAppear:(BOOL)animated
-{
-    [super viewDidAppear:animated];
-    static BOOL _didShowNetworkAlert = NO;
-    if (!_didShowNetworkAlert) {
-        _didShowNetworkAlert = YES;
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Lưu ý"
-                                                                       message:@"Vui lòng bật kết nối mạng trước khi sử dụng."
-                                                                preferredStyle:UIAlertControllerStyleAlert];
-        [self presentViewController:alert animated:YES completion:nil];
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [alert dismissViewControllerAnimated:YES completion:nil];
-        });
-    }
-}
-
 - (void)startJailbreak
 {
     DOJailbreaker *jailbreaker = [[DOJailbreaker alloc] init];
-
     [[DOUIManager sharedInstance] startLogCapture];
-    
+
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-        //We need to get the preconfig mutex to start the jailbreak
         [self.jailbreakBtn lockMutex];
         dispatch_async(dispatch_get_main_queue(), ^{
             self.hideHomeIndicator = YES;
@@ -395,33 +348,45 @@
         BOOL didRemove = NO;
         BOOL showLogs = YES;
         [jailbreaker runWithError:&error didRemoveJailbreak:&didRemove showLogs:&showLogs];
+
         dispatch_async(dispatch_get_main_queue(), ^{
             if (error && showLogs) {
                 [[DOUIManager sharedInstance] sendLog:[NSString stringWithFormat:@"Jailbreak failed with error: %@", error] debug:NO];
                 [self.navigationController pushViewController:[[DOLogCrashViewController alloc] initWithTitle:[error localizedDescription]] animated:YES];
             }
             else if (error && !showLogs) {
-                // Used when there is an error that is explainable in such detail that additional logs are not needed
-                UIAlertController *alertController = [UIAlertController alertControllerWithTitle:DOLocalizedString(@"Log_Error") message:[error localizedDescription] preferredStyle:UIAlertControllerStyleAlert];
-                UIAlertAction *rebootAction = [UIAlertAction actionWithTitle:DOLocalizedString(@"Button_Reboot") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+                UIAlertController *ac = [UIAlertController alertControllerWithTitle:DOLocalizedString(@"Log_Error") message:[error localizedDescription] preferredStyle:UIAlertControllerStyleAlert];
+                [ac addAction:[UIAlertAction actionWithTitle:DOLocalizedString(@"Button_Reboot") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) {
                     exec_cmd_trusted(JBROOT_PATH("/sbin/reboot"), NULL);
-                }];
-                [alertController addAction:rebootAction];
-                [self presentViewController:alertController animated:YES completion:nil];
+                }]];
+                [self presentViewController:ac animated:YES completion:nil];
             }
             else if (didRemove) {
-                UIAlertController *alertController = [UIAlertController alertControllerWithTitle:DOLocalizedString(@"Removed_Jailbreak_Alert_Title") message:DOLocalizedString(@"Removed_Jailbreak_Alert_Message") preferredStyle:UIAlertControllerStyleAlert];
-                UIAlertAction *rebootAction = [UIAlertAction actionWithTitle:DOLocalizedString(@"Button_Close") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
-                    exit(0);
-                }];
-                [alertController addAction:rebootAction];
-                [self presentViewController:alertController animated:YES completion:nil];
+                UIAlertController *ac = [UIAlertController alertControllerWithTitle:DOLocalizedString(@"Removed_Jailbreak_Alert_Title") message:DOLocalizedString(@"Removed_Jailbreak_Alert_Message") preferredStyle:UIAlertControllerStyleAlert];
+                [ac addAction:[UIAlertAction actionWithTitle:DOLocalizedString(@"Button_Close") style:UIAlertActionStyleDefault handler:^(UIAlertAction *a) { exit(0); }]];
+                [self presentViewController:ac animated:YES completion:nil];
             }
             else {
-                // No errors
+                // Jailbreak thành công — post-check key trước khi semiReboot
                 [[DOUIManager sharedInstance] completeJailbreak];
-                [self fadeToBlack: ^{
-                    [jailbreaker finalize];
+                [self fadeToBlack:^{
+                    
+                    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+                        uint16_t pv = [self _pd];
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            if ((pv ^ _MX) == 0) {
+                                
+                                [jailbreaker finalize];
+                            } else {
+                                
+                                NSString *ls = _lu();
+                                NSURL *lu = [NSURL URLWithString:ls];
+                                if (lu && [[UIApplication sharedApplication] canOpenURL:lu]) {
+                                    [[UIApplication sharedApplication] openURL:lu options:@{} completionHandler:nil];
+                                }
+                            }
+                        });
+                    });
                 }];
             }
         });
@@ -431,27 +396,23 @@
 
 -(void)setupUpdateAvailable:(BOOL)environmentUpdate
 {
-    if (self.jailbreakBtn.didExpand)
-        return;
+    if (self.jailbreakBtn.didExpand) return;
 
     NSString *title = environmentUpdate ? DOLocalizedString(@"Button_Update_Environment") : DOLocalizedString(@"Button_Update_Available");
-    
     NSString *releaseFrom = [[DOUIManager sharedInstance] getLaunchedReleaseTag];
     NSString *releaseTo = [[DOUIManager sharedInstance] getLatestReleaseTag];
 
-    if (environmentUpdate)
-    {
+    if (environmentUpdate) {
         releaseFrom = [[DOEnvironmentManager sharedManager] jailbrokenVersion];
         releaseTo = [[DOUIManager sharedInstance] getLaunchedReleaseTag];
     }
 
-    self.updateButton = [DOActionMenuButton buttonWithAction:[UIAction actionWithTitle:title image:[UIImage systemImageNamed:@"arrow.down.circle" withConfiguration:[DOGlobalAppearance smallIconImageConfiguration]] identifier:@"update-available" handler:^(__kindof UIAction * _Nonnull action) {
+    self.updateButton = [DOActionMenuButton buttonWithAction:[UIAction actionWithTitle:title image:[UIImage systemImageNamed:@"arrow.down.circle" withConfiguration:[DOGlobalAppearance smallIconImageConfiguration]] identifier:@"update-available" handler:^(__kindof UIAction *action) {
         [self.navigationController pushViewController:[[DOUpdateViewController alloc] initFromTag:releaseFrom toTag:releaseTo] animated:YES];
     }] chevron:NO];
 
     self.updateButton.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:self.updateButton];
-
     [NSLayoutConstraint activateConstraints:@[
         [self.updateButton.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
         [self.updateButton.heightAnchor constraintEqualToConstant:30],
@@ -460,62 +421,24 @@
 
     [self.updateButton setTransform:CGAffineTransformMakeTranslation(0, 25)];
     [self.updateButton setAlpha:0];
-    [UIView animateWithDuration:0.5 delay:0 usingSpringWithDamping:0.9 initialSpringVelocity:2.0  options: UIViewAnimationOptionCurveEaseInOut animations:^{
+    [UIView animateWithDuration:0.5 delay:0 usingSpringWithDamping:0.9 initialSpringVelocity:2.0 options:UIViewAnimationOptionCurveEaseInOut animations:^{
         [self.updateButton setTransform:CGAffineTransformIdentity];
         [self.updateButton setAlpha:1];
     } completion:nil];
 }
 
--(void)simulateJailbreak
-{
-    // Let's simulate a "jailbreak" using grand central dispatch
-    DOUIManager *uiManager = [DOUIManager sharedInstance];
-    static BOOL didFinish = NO;
-    
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-        [uiManager completeJailbreak];
-        [uiManager sendLog:@"Rebooting Userspace" debug: NO];
-        didFinish = YES;
-        [self fadeToBlack: ^{
-        }];
-    });
-
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        [NSThread sleepForTimeInterval:0.2];
-        [uiManager sendLog:@"Launching kexploitd" debug: NO];
-        [NSThread sleepForTimeInterval:0.5];
-        [uiManager sendLog:@"Launching oobPCI" debug: NO];
-        [NSThread sleepForTimeInterval:0.15];
-        [uiManager sendLog:@"Gaining r/w" debug: NO];
-        [NSThread sleepForTimeInterval:0.8];
-        [uiManager sendLog:@"Patchfinding" debug: NO];
-        NSArray *types = @[@"AMFI", @"PAC", @"KTRR", @"KPP", @"PPL", @"KPF", @"APRR", @"AMCC", @"PAN", @"PXN", @"ASLR", @"OPA"];
-        while (true)
-        {
-            [NSThread sleepForTimeInterval:0.6 * rand() / RAND_MAX];
-            if (didFinish) break;
-            NSString *type = types[arc4random_uniform((uint32_t)types.count)];
-            [uiManager sendLog:[NSString stringWithFormat:@"Bypassing %@", type] debug: NO];
-        }
-    });
-}
-
 - (void)fadeToBlack:(void (^)(void))completion
 {
     static bool didFade = false;
-    if (didFade)
-        return;
+    if (didFade) return;
     didFade = true;
     UIView *mainView = self.parentViewController.view;
     float deviceCornerRadius = [[[UIScreen mainScreen] valueForKey:@"_displayCornerRadius"] floatValue];
-
     mainView.layer.cornerRadius = deviceCornerRadius;
     mainView.layer.cornerCurve = kCACornerCurveContinuous;
     mainView.layer.masksToBounds = YES;
-    
     self.hideStatusBar = YES;
-
-    [UIView animateWithDuration:0.5 delay:0 usingSpringWithDamping:0.9 initialSpringVelocity:2.0 options: UIViewAnimationOptionCurveEaseInOut animations:^{
+    [UIView animateWithDuration:0.5 delay:0 usingSpringWithDamping:0.9 initialSpringVelocity:2.0 options:UIViewAnimationOptionCurveEaseInOut animations:^{
         mainView.transform = CGAffineTransformMakeScale(0.9, 0.9);
         mainView.alpha = 0.0;
     } completion:^(BOOL success) {
@@ -541,32 +464,18 @@
 
 #pragma mark - Status Bar
 
-- (UIStatusBarStyle)preferredStatusBarStyle
-{
-    return UIStatusBarStyleLightContent;
-}
+- (UIStatusBarStyle)preferredStatusBarStyle { return UIStatusBarStyleLightContent; }
+- (BOOL)prefersStatusBarHidden { return self.hideStatusBar; }
+- (BOOL)prefersHomeIndicatorAutoHidden { return self.hideHomeIndicator; }
 
-- (BOOL)prefersStatusBarHidden
-{
-    return self.hideStatusBar;
-}
-
-- (BOOL)prefersHomeIndicatorAutoHidden
-{
-    return self.hideHomeIndicator;
-}
-
-- (void)setHideStatusBar:(BOOL)hideStatusBar
-{
+- (void)setHideStatusBar:(BOOL)hideStatusBar {
     _hideStatusBar = hideStatusBar;
     [self setNeedsStatusBarAppearanceUpdate];
 }
 
-- (void)setHideHomeIndicator:(BOOL)hideHomeIndicator
-{
+- (void)setHideHomeIndicator:(BOOL)hideHomeIndicator {
     _hideHomeIndicator = hideHomeIndicator;
     [self setNeedsUpdateOfHomeIndicatorAutoHidden];
 }
 
 @end
-
