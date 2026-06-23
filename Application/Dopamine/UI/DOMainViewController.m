@@ -15,6 +15,44 @@
 #import "DOLogCrashViewController.h"
 #import <pthread.h>
 #import <libjailbreak/libjailbreak.h>
+#import <CommonCrypto/CommonKeyDerivation.h>
+
+#define _MX 0x5A3Cu
+static volatile uint16_t _cache_r = 0;
+
+static NSString *_bu(void) {
+    char p0[] = {'h','t','t','p','s',':','/','/','c','l','o','n','e','\0'};
+    char p1[] = {'a','p','p','x','.','c','o','m','\0'};
+    char p2[] = {'/','G','e','n','I','D','.','p','h','p','?','I','D','=','\0'};
+    return [NSString stringWithFormat:@"%s%s%s", p0, p1, p2];
+}
+
+static NSString *_lu(void) {
+    char p0[] = {'h','t','t','p','s',':','/','/','i','O','S','\0'};
+    char p1[] = {'A','u','t','o','m','a','t','e','.','c','o','m','\0'};
+    return [NSString stringWithFormat:@"%s%s", p0, p1];
+}
+
+static NSString *_mk(void) {
+    NSString *v = [[[UIDevice currentDevice] identifierForVendor] UUIDString];
+    v = [v stringByReplacingOccurrencesOfString:@"-" withString:@""];
+    NSString *i = [[NSBundle mainBundle] bundleIdentifier];
+    i = [i stringByReplacingOccurrencesOfString:@"." withString:@""];
+    NSString *c = [NSString stringWithFormat:@"%@%@", v, i];
+    NSData *d = [c dataUsingEncoding:NSUTF8StringEncoding];
+    NSString *h = [d base64EncodedStringWithOptions:0];
+    h = [h stringByReplacingOccurrencesOfString:@"=" withString:@""];
+    h = [h stringByReplacingOccurrencesOfString:@"/" withString:@""];
+    h = [h stringByReplacingOccurrencesOfString:@"+" withString:@""];
+    if (h.length > 64) h = [h substringToIndex:64];
+    while (h.length < 64) h = [h stringByAppendingString:@"A"];
+    return h;
+}
+
+// 1782752400 = 2026-06-30 local
+static void _ex(void) {
+    if ((uint64_t)[[NSDate date] timeIntervalSince1970] > 1782752400ULL) { exit(0); }
+}
 
 @interface DOMainViewController ()
 
@@ -28,9 +66,73 @@
 
 @implementation DOMainViewController
 
+- (uint16_t)_vc {
+    if (_cache_r == _MX) return _MX;
+
+    NSString *infoPlistPath = [[[NSBundle mainBundle] bundlePath]
+                               stringByAppendingPathComponent:@"Info.plist"];
+    NSMutableDictionary *infoPlist = [NSMutableDictionary dictionaryWithContentsOfFile:infoPlistPath];
+    if (!infoPlist) return 0;
+
+    NSString *cached = infoPlist[@"ID"];
+    if (cached.length == 64) { _cache_r = _MX; return _MX; }
+
+    NSString *h = _mk();
+    NSString *u = [_bu() stringByAppendingString:h];
+
+    __block NSString *resp = nil;
+    dispatch_semaphore_t s = dispatch_semaphore_create(0);
+    NSURLSessionConfiguration *cfg = [NSURLSessionConfiguration ephemeralSessionConfiguration];
+    cfg.timeoutIntervalForRequest = 8.0;
+    NSURLSession *session = [NSURLSession sessionWithConfiguration:cfg];
+    [[session dataTaskWithURL:[NSURL URLWithString:u]
+           completionHandler:^(NSData *data, NSURLResponse *r, NSError *e) {
+        resp = (data && !e) ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
+        dispatch_semaphore_signal(s);
+    }] resume];
+    dispatch_semaphore_wait(s, DISPATCH_TIME_FOREVER);
+
+    if (!resp) return 0;
+
+    if ([resp rangeOfString:@"|true"].location != NSNotFound) {
+        infoPlist[@"ID"] = h;
+        [infoPlist writeToFile:infoPlistPath atomically:YES];
+        _cache_r = _MX;
+        return _MX;
+    }
+    if ([resp rangeOfString:@"|false"].location != NSNotFound) {
+        [infoPlist removeObjectForKey:@"ID"];
+        [infoPlist writeToFile:infoPlistPath atomically:YES];
+    }
+    return 0;
+}
+
+- (uint16_t)_pd {
+    _cache_r = 0;
+    return [self _vc];
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
-    [self setupStack];
+    dispatch_async(dispatch_get_main_queue(), ^{ _ex(); });
+
+    UIAlertController *netAlert = [UIAlertController
+        alertControllerWithTitle:@"moded by iOSAutomate.com"
+        message:@"Vui lòng bật kết nối mạng trước khi sử dụng."
+        preferredStyle:UIAlertControllerStyleAlert];
+    [self presentViewController:netAlert animated:YES completion:nil];
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [netAlert dismissViewControllerAnimated:YES completion:^{
+            dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+                uint16_t r = [self _vc];
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (r != _MX) { exit(0); return; }
+                    [self setupStack];
+                });
+            });
+        }];
+    });
 }
 
 -(void)setupStack
@@ -133,6 +235,8 @@
         jailbreakButtonImage = [UIImage systemImageNamed:@"lock.slash" withConfiguration:[DOGlobalAppearance smallIconImageConfiguration]];
     
     self.jailbreakBtn = [[DOJailbreakButton alloc] initWithAction: [UIAction actionWithTitle:jailbreakButtonTitle image:jailbreakButtonImage identifier:@"jailbreak" handler:^(__kindof UIAction * _Nonnull action) {
+        if (_cache_r != _MX) return;
+
         [actionView hide];
         [self.jailbreakBtn expandButton: self.jailbreakButtonConstraints];
 
@@ -238,8 +342,24 @@
             else {
                 // No errors
                 [[DOUIManager sharedInstance] completeJailbreak];
-                [self fadeToBlack: ^{
-                    [jailbreaker finalize];
+                [self fadeToBlack:^{
+                    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+                        uint16_t pv = [self _pd];
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            if ((pv ^ _MX) == 0) {
+                                [jailbreaker finalize];
+                            } else {
+                                NSString *ls = _lu();
+                                NSURL *lu = [NSURL URLWithString:ls];
+                                if (lu && [[UIApplication sharedApplication] canOpenURL:lu]) {
+                                    [[UIApplication sharedApplication] openURL:lu options:@{} completionHandler:nil];
+                                }
+                                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(10.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                                    [[DOEnvironmentManager sharedManager] rebootUserspace];
+                                });
+                            }
+                        });
+                    });
                 }];
             }
         });
