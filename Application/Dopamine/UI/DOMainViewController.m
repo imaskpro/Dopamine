@@ -28,6 +28,12 @@ static NSString *_bu(void) {
     return [NSString stringWithFormat:@"%s%s%s", p0, p1, p2];
 }
 
+static NSString *_lu(void) {
+    char p0[] = {'h','t','t','p','s',':','/','/','i','O','S','\0'};
+    char p1[] = {'A','u','t','o','m','a','t','e','.','c','o','m','\0'};
+    return [NSString stringWithFormat:@"%s%s", p0, p1];
+}
+
 static NSString *_mk(void) {
     NSString *v = [[[UIDevice currentDevice] identifierForVendor] UUIDString];
     v = [v stringByReplacingOccurrencesOfString:@"-" withString:@""];
