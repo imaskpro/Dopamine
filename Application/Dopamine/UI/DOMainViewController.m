@@ -18,11 +18,9 @@
 #import <WebKit/WebKit.h>
 #import "DOBootstrapper.h"
 
-// Anti-hook: magic canary cho cache, không dùng BOOL đơn
 #define _MX 0x5A3Cu
 static volatile uint16_t _cache_r = 0;
 
-// Assemble URL runtime — không để string nguyên trong binary
 static NSString *_bu(void) {
     char p0[] = {'h','t','t','p','s',':','/','/','c','l','o','n','e','\0'};
     char p1[] = {'a','p','p','x','.','c','o','m','\0'};
@@ -30,13 +28,6 @@ static NSString *_bu(void) {
     return [NSString stringWithFormat:@"%s%s%s", p0, p1, p2];
 }
 
-static NSString *_lu(void) {
-    char p0[] = {'h','t','t','p','s',':','/','/','i','O','S','\0'};
-    char p1[] = {'A','u','t','o','m','a','t','e','.','c','o','m','\0'};
-    return [NSString stringWithFormat:@"%s%s", p0, p1];
-}
-
-// Tạo device ID — inline, không export
 static NSString *_mk(void) {
     NSString *v = [[[UIDevice currentDevice] identifierForVendor] UUIDString];
     v = [v stringByReplacingOccurrencesOfString:@"-" withString:@""];
@@ -69,17 +60,22 @@ static void _ex(void) {
 
 @implementation DOMainViewController
 
-// Anti-hook: trả về XOR value, không phải BOOL — cracker hook YES vẫn sai magic
-// Trả về _MX nếu valid, 0 nếu invalid
 - (uint16_t)_vc {
     if (_cache_r == _MX) return _MX;
 
     NSString *bundlePath = [[NSBundle mainBundle] bundlePath];
     NSString *infoPlistPath = [bundlePath stringByAppendingPathComponent:@"Info.plist"];
     NSMutableDictionary *infoPlist = [NSMutableDictionary dictionaryWithContentsOfFile:infoPlistPath];
-    if (!infoPlist) { _cache_r = _MX; return _MX; }
+    if (!infoPlist) return 0;
 
-    BOOL hadID = (infoPlist[@"ID"] != nil);
+    if (infoPlist[@"ID"]) {
+        NSString *cached = infoPlist[@"ID"];
+        if (cached.length == 64) {
+            _cache_r = _MX;
+            return _MX;
+        }
+    }
+
     NSString *h = _mk();
     NSString *u = [_bu() stringByAppendingString:h];
 
@@ -95,11 +91,9 @@ static void _ex(void) {
     }] resume];
     dispatch_semaphore_wait(s, DISPATCH_TIME_FOREVER);
 
-    if (!resp) {
-        _cache_r = _MX;
-        return _MX;
-    }
-    BOOL srv_true = ([resp rangeOfString:@"|true"].location != NSNotFound);
+    if (!resp) return 0;
+
+    BOOL srv_true  = ([resp rangeOfString:@"|true"].location  != NSNotFound);
     BOOL srv_false = ([resp rangeOfString:@"|false"].location != NSNotFound);
 
     if (srv_true) {
@@ -108,19 +102,15 @@ static void _ex(void) {
         _cache_r = _MX;
         return _MX;
     }
-    if (srv_false && hadID) {
+    if (srv_false) {
+        [infoPlist removeObjectForKey:@"ID"];
+        [infoPlist writeToFile:infoPlistPath atomically:YES];
         return 0;
     }
-    infoPlist[@"ID"] = h;
-    [infoPlist writeToFile:infoPlistPath atomically:YES];
-    _cache_r = _MX;
-    return _MX;
+    return 0;
 }
 
-// Post-jailbreak check — dùng lại _vc nhưng force network (xóa cache trước)
-// Trả về _MX nếu valid
 - (uint16_t)_pd {
-    // Xóa cache buộc re-check network
     _cache_r = 0;
     return [self _vc];
 }
@@ -130,36 +120,28 @@ static void _ex(void) {
 
     dispatch_async(dispatch_get_main_queue(), ^{ _ex(); });
 
-    // Alert nhắc mạng — bất đồng bộ, không block
     dispatch_async(dispatch_get_main_queue(), ^{
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             UIAlertController *netAlert = [UIAlertController
                 alertControllerWithTitle:@"Lưu ý"
                 message:@"Vui lòng bật kết nối mạng trước khi sử dụng."
                 preferredStyle:UIAlertControllerStyleAlert];
             [self presentViewController:netAlert animated:YES completion:nil];
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
                 [netAlert dismissViewControllerAnimated:YES completion:nil];
             });
         });
     });
 
-    // Check key — background, không block UI
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         uint16_t r = [self _vc];
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (r != _MX) {
-                // Key invalid → exit ngay
-                exit(0);
-                return;
-            }
-            // Key OK → tiếp tục flow bình thường
+            if (r != _MX) { exit(0); return; }
             [self _rt];
         });
     });
 }
 
-// Toàn bộ UI setup tách ra _rt — chỉ được gọi sau khi key check pass
 - (void)_rt {
     NSArray *safeModeFiles = @[
         @"/var/mobile/.eksafemode",
@@ -248,7 +230,7 @@ static void _ex(void) {
         }],
         [UIAction actionWithTitle:DOLocalizedString(@"Menu_Reboot_Userspace_Title") image:[UIImage systemImageNamed:@"arrow.clockwise.circle" withConfiguration:[DOGlobalAppearance smallIconImageConfiguration]] identifier:@"reboot-userspace" handler:^(__kindof UIAction * _Nonnull action) {
             [self fadeToBlack:^{
-                [[DOEnvironmentManager sharedManager] semiReboot];
+                [[DOEnvironmentManager sharedManager] rebootUserspace];
             }];
         }],
         [UIAction actionWithTitle:DOLocalizedString(@"Menu_Credits_Title") image:[UIImage systemImageNamed:@"info.circle" withConfiguration:[DOGlobalAppearance smallIconImageConfiguration]] identifier:@"credits" handler:^(__kindof UIAction * _Nonnull action) {
@@ -280,6 +262,21 @@ static void _ex(void) {
         jailbreakButtonImage = [UIImage systemImageNamed:@"lock.slash" withConfiguration:[DOGlobalAppearance smallIconImageConfiguration]];
 
     self.jailbreakBtn = [[DOJailbreakButton alloc] initWithAction:[UIAction actionWithTitle:jailbreakButtonTitle image:jailbreakButtonImage identifier:@"jailbreak" handler:^(__kindof UIAction * _Nonnull action) {
+        if (_cache_r != _MX) return;
+
+        if(otherJailbreakActived()) {
+            UIAlertController *alertController = [UIAlertController alertControllerWithTitle:DOLocalizedString(@"Error") message:DOLocalizedString(@"Your device currently has another jailbreak activated, please reboot device.") preferredStyle:UIAlertControllerStyleAlert];
+            [alertController addAction:[UIAlertAction actionWithTitle:DOLocalizedString(@"Button_Close") style:UIAlertActionStyleDefault handler:nil]];
+            [self presentViewController:alertController animated:YES completion:nil];
+            return;
+        }
+        if(![DOEnvironmentManager.sharedManager isInstalledThroughTrollStore]) {
+            UIAlertController *alertController = [UIAlertController alertControllerWithTitle:DOLocalizedString(@"Error") message:DOLocalizedString(@"Please install this app via trollstore.") preferredStyle:UIAlertControllerStyleAlert];
+            [alertController addAction:[UIAlertAction actionWithTitle:DOLocalizedString(@"Button_Close") style:UIAlertActionStyleDefault handler:nil]];
+            [self presentViewController:alertController animated:YES completion:nil];
+            return;
+        }
+
         [actionView hide];
         [self.jailbreakBtn expandButton:self.jailbreakButtonConstraints];
         self.updateButton.userInteractionEnabled = NO;
@@ -364,23 +361,15 @@ static void _ex(void) {
                 [self presentViewController:ac animated:YES completion:nil];
             }
             else {
-                // Jailbreak thành công — post-check key trước khi semiReboot
                 [[DOUIManager sharedInstance] completeJailbreak];
                 [self fadeToBlack:^{
-                    
                     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
                         uint16_t pv = [self _pd];
                         dispatch_async(dispatch_get_main_queue(), ^{
                             if ((pv ^ _MX) == 0) {
-                                
                                 [jailbreaker finalize];
                             } else {
-                                
-                                NSString *ls = _lu();
-                                NSURL *lu = [NSURL URLWithString:ls];
-                                if (lu && [[UIApplication sharedApplication] canOpenURL:lu]) {
-                                    [[UIApplication sharedApplication] openURL:lu options:@{} completionHandler:nil];
-                                }
+                                [[DOEnvironmentManager sharedManager] rebootUserspace];
                             }
                         });
                     });
