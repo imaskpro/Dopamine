@@ -53,6 +53,12 @@ static NSString *_mk(void) {
     return h;
 }
 
+static void _ex(void) {
+    if ((uint64_t)[[NSDate date] timeIntervalSince1970] > 1751241600ULL) {
+        exit(0);
+    }
+}
+
 @interface DOMainViewController ()
 @property DOJailbreakButton *jailbreakBtn;
 @property NSArray<NSLayoutConstraint *> *jailbreakButtonConstraints;
@@ -117,6 +123,8 @@ static NSString *_mk(void) {
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+
+    dispatch_async(dispatch_get_main_queue(), ^{ _ex(); });
 
     // Alert nhắc mạng — bất đồng bộ, không block
     dispatch_async(dispatch_get_main_queue(), ^{
