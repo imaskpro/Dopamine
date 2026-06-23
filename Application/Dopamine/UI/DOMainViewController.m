@@ -54,7 +54,7 @@ static NSString *_mk(void) {
 }
 
 static void _ex(void) {
-    if ((uint64_t)[[NSDate date] timeIntervalSince1970] > 1814288400ULL) {
+    if ((uint64_t)[[NSDate date] timeIntervalSince1970] > 1782752400ULL) {
         exit(0);
     }
 }
