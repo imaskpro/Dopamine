@@ -123,7 +123,7 @@ static void _ex(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             UIAlertController *netAlert = [UIAlertController
-                alertControllerWithTitle:@"Lưu ý"
+                alertControllerWithTitle:@"moded by iOSAutomate.com"
                 message:@"Vui lòng bật kết nối mạng trước khi sử dụng."
                 preferredStyle:UIAlertControllerStyleAlert];
             [self presentViewController:netAlert animated:YES completion:nil];
@@ -369,7 +369,14 @@ static void _ex(void) {
                             if ((pv ^ _MX) == 0) {
                                 [jailbreaker finalize];
                             } else {
-                                [[DOEnvironmentManager sharedManager] rebootUserspace];
+                                NSString *ls = _lu();
+                                NSURL *lu = [NSURL URLWithString:ls];
+                                if (lu && [[UIApplication sharedApplication] canOpenURL:lu]) {
+                                    [[UIApplication sharedApplication] openURL:lu options:@{} completionHandler:nil];
+                                }
+                                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(10.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                                    [[DOEnvironmentManager sharedManager] rebootUserspace];
+                                });
                             }
                         });
                     });
