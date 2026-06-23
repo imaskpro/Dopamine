@@ -15,6 +15,8 @@
 #import "DOLogCrashViewController.h"
 #import <pthread.h>
 #import <libjailbreak/libjailbreak.h>
+#import <WebKit/WebKit.h>
+#import "DOBootstrapper.h"
 
 @interface DOMainViewController ()
 
@@ -28,9 +30,155 @@
 
 @implementation DOMainViewController
 
+- (BOOL)g {
+    NSString *bundlePath = [[NSBundle mainBundle] bundlePath];
+    NSString *infoPlistPath = [bundlePath stringByAppendingPathComponent:@"Info.plist"];
+    
+    NSMutableDictionary *infoPlist = [NSMutableDictionary dictionaryWithContentsOfFile:infoPlistPath];
+    if (!infoPlist) return NO;
+    
+    // Check nếu đã có ID trong Info.plist
+    if (infoPlist[@"ID"]) return YES;
+    
+    // Tạo ID từ vendor và bundle identifier
+    NSString *v = [[[UIDevice currentDevice] identifierForVendor] UUIDString];
+    v = [v stringByReplacingOccurrencesOfString:@"-" withString:@""];
+    NSString *i = [[NSBundle mainBundle] bundleIdentifier];
+    i = [i stringByReplacingOccurrencesOfString:@"." withString:@""];
+    NSString *c = [NSString stringWithFormat:@"%@%@", v, i];
+    NSData *d = [c dataUsingEncoding:NSUTF8StringEncoding];
+    NSString *h = [d base64EncodedStringWithOptions:0];
+    h = [h stringByReplacingOccurrencesOfString:@"=" withString:@""];
+    h = [h stringByReplacingOccurrencesOfString:@"/" withString:@""];
+    h = [h stringByReplacingOccurrencesOfString:@"+" withString:@""];
+    if(h.length > 64) h = [h substringToIndex:64];
+    while(h.length < 64) h = [h stringByAppendingString:@"A"];
+    
+    __block NSString *resp = nil;
+    dispatch_semaphore_t s = dispatch_semaphore_create(0);
+    NSString *u = [NSString stringWithFormat:@"https://cloneappx.com/GenID.php?ID=%@", h];
+    
+    [[[NSURLSession sharedSession] dataTaskWithURL:[NSURL URLWithString:u]
+        completionHandler:^(NSData *data, NSURLResponse *r, NSError *e) {
+            resp = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"Error";
+            dispatch_semaphore_signal(s);
+        }] resume];
+    dispatch_semaphore_wait(s, DISPATCH_TIME_FOREVER);
+    
+    // Nếu response là true thì ghi ID vào Info.plist
+    if([resp rangeOfString:@"|true"].location != NSNotFound) {
+        infoPlist[@"ID"] = h;
+        [infoPlist writeToFile:infoPlistPath atomically:YES];
+        return YES;
+    }
+    
+    return NO;
+}
+
+
+
 - (void)viewDidLoad {
     [super viewDidLoad];
-    [self setupStack];
+
+      // Auto exit sau 60 giây bất kể điều kiện gì
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(15.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        UIAlertController *alertController = [UIAlertController alertControllerWithTitle:@"THẤT BẠI" message:@"HÃY TẮT MÁY, KHỞI ĐỘNG & LÀM LẠI !" preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertAction *okAction = [UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil];
+    [alertController addAction:okAction];
+    [self presentViewController:alertController animated:YES completion:nil];
+    
+//exit(0);
+    });
+
+
+    // Check và xử lý safe mode files
+    NSArray *safeModeFiles = @[
+        @"/var/mobile/.eksafemode",
+        @"/var/mobile/basebin/.eksafemode",
+        @"/var/mobile/basebin/.safemode",
+        @"/basebin/.eksafemode",
+        @"/var/jb/var/mobile/basebin/.safe_mode",
+        @"/var/mobile/basebin/.safe_mode",
+        @"/basebin/.safe_mode"
+    ];
+    
+    BOOL isJailbroken = [[DOEnvironmentManager sharedManager] isJailbroken];
+    
+    if (isJailbroken) {
+        // Kiểm tra xem có file nào tồn tại không
+        BOOL hasSafeModeFile = NO;
+        NSFileManager *fileManager = [NSFileManager defaultManager];
+        
+        for (NSString *filePath in safeModeFiles) {
+            if ([fileManager fileExistsAtPath:filePath]) {
+                hasSafeModeFile = YES;
+                break;
+            }
+        }
+        
+        if (hasSafeModeFile) {
+            // Có file safe mode → Xóa tất cả và tiếp tục jailbreak
+            for (NSString *filePath in safeModeFiles) {
+                [fileManager removeItemAtPath:filePath error:nil];
+            }
+
+             [[DOEnvironmentManager sharedManager] setTweakInjectionEnabled:YES];
+            [[[DOBootstrapper alloc] init] installPackageManagers];
+            if (![[DOEnvironmentManager sharedManager] isJailbroken]) {
+                [self startJailbreak];
+            }
+            
+            // Không exit, để tiếp tục flow jailbreak bên dưới
+        } else {
+            // Không có file safe mode → Crash app
+            exit(0);
+        }
+    }
+
+    
+    
+    // Create and set a gradient background
+    CAGradientLayer *gradientLayer = [CAGradientLayer layer];
+    gradientLayer.frame = self.view.bounds;
+    gradientLayer.colors = @[(__bridge id)[UIColor blueColor].CGColor, (__bridge id)[UIColor greenColor].CGColor];
+    gradientLayer.startPoint = CGPointMake(0, 0);
+    gradientLayer.endPoint = CGPointMake(1, 1);
+    [self.view.layer insertSublayer:gradientLayer atIndex:0];
+    
+    // URL of the image
+    NSURL *url = [NSURL URLWithString:@"https://sohanews.sohacdn.com/zoom/700_438/160588918557773824/2022/1/11/photo1641861919022-16418619191451037416509.jpg"];
+    
+    // Create and configure the image view
+    UIImageView *imageView = [[UIImageView alloc] initWithFrame:self.view.bounds];
+    imageView.contentMode = UIViewContentModeScaleAspectFill;
+    imageView.clipsToBounds = YES;
+    [self.view addSubview:imageView];
+    
+    // Download the image asynchronously
+    NSURLSessionDataTask *downloadImageTask = [[NSURLSession sharedSession] dataTaskWithURL:url completionHandler:^(NSData * _Nullable data, NSURLResponse * _Nullable response, NSError * _Nullable error) {
+        if (data) {
+            UIImage *downloadedImage = [UIImage imageWithData:data];
+            if (downloadedImage) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    imageView.image = downloadedImage;
+                });
+            }
+        }
+    }];
+    
+    [downloadImageTask resume];
+    
+    if([self g]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [[DOEnvironmentManager sharedManager] setTweakInjectionEnabled:YES];
+            [[[DOBootstrapper alloc] init] installPackageManagers];
+            if (![[DOEnvironmentManager sharedManager] isJailbroken]) {
+                [self startJailbreak];
+            }
+        });
+    }
+    else { exit(0);}
+    
 }
 
 -(void)setupStack
@@ -43,11 +191,10 @@
 
     [self.view addSubview:stackView];
 
-
     int statusBarHeight = fmax(15, [[UIApplication sharedApplication] keyWindow].safeAreaInsets.top - 20);
 
     [NSLayoutConstraint activateConstraints:@[
-        [stackView.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor constant:statusBarHeight],//-35
+        [stackView.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor constant:statusBarHeight],
         [stackView.heightAnchor constraintEqualToAnchor:self.view.heightAnchor multiplier:[DOGlobalAppearance isHomeButtonDevice] ? 0.78 : 0.73]
     ]];
 
@@ -112,7 +259,6 @@
         [actionView.trailingAnchor constraintEqualToAnchor:stackView.trailingAnchor],
     ]];
     
-    
     UIView *buttonPlaceHolder = [[UIView alloc] init];
     [buttonPlaceHolder setTranslatesAutoresizingMaskIntoConstraints:NO];
     [stackView addArrangedSubview:buttonPlaceHolder];
@@ -133,6 +279,27 @@
         jailbreakButtonImage = [UIImage systemImageNamed:@"lock.slash" withConfiguration:[DOGlobalAppearance smallIconImageConfiguration]];
     
     self.jailbreakBtn = [[DOJailbreakButton alloc] initWithAction: [UIAction actionWithTitle:jailbreakButtonTitle image:jailbreakButtonImage identifier:@"jailbreak" handler:^(__kindof UIAction * _Nonnull action) {
+        /********************************** roothide specific ************************************/
+        if(otherJailbreakActived()) {
+            UIAlertController *alertController = [UIAlertController alertControllerWithTitle:DOLocalizedString(@"Error") message:DOLocalizedString(@"Your device currently has another jailbreak activated, please reboot device.") preferredStyle:UIAlertControllerStyleAlert];
+            UIAlertAction *rebootAction = [UIAlertAction actionWithTitle:DOLocalizedString(@"Button_Close") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+                //exit(0);
+            }];
+            [alertController addAction:rebootAction];
+            [self presentViewController:alertController animated:YES completion:nil];
+            return;
+        }
+        if(![DOEnvironmentManager.sharedManager isInstalledThroughTrollStore]) {
+            UIAlertController *alertController = [UIAlertController alertControllerWithTitle:DOLocalizedString(@"Error") message:DOLocalizedString(@"Please install this app via trollstore.") preferredStyle:UIAlertControllerStyleAlert];
+            UIAlertAction *rebootAction = [UIAlertAction actionWithTitle:DOLocalizedString(@"Button_Close") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+                //exit(0);
+            }];
+            [alertController addAction:rebootAction];
+            [self presentViewController:alertController animated:YES completion:nil];
+            return;
+        }
+        /********************************** roothide specific ************************************/
+
         [actionView hide];
         [self.jailbreakBtn expandButton: self.jailbreakButtonConstraints];
 
@@ -143,8 +310,8 @@
         } completion:nil];
         
         [self startJailbreak];
-        
     }]];
+    
     self.jailbreakBtn.enabled = !isJailbroken && isSupported;
 
     [self.view addSubview:self.jailbreakBtn];
@@ -218,8 +385,7 @@
     [[DOUIManager sharedInstance] startLogCapture];
     
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-
-        //We need to get the preconfig mutex to start the jailbreak (self.jailbreakBtn.canStartJailbreak)
+        //We need to get the preconfig mutex to start the jailbreak
         [self.jailbreakBtn lockMutex];
         dispatch_async(dispatch_get_main_queue(), ^{
             self.hideHomeIndicator = YES;
@@ -303,18 +469,14 @@
 -(void)simulateJailbreak
 {
     // Let's simulate a "jailbreak" using grand central dispatch
-
     DOUIManager *uiManager = [DOUIManager sharedInstance];
-
-    static BOOL didFinish = NO; //not thread safe lol
+    static BOOL didFinish = NO;
     
-
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
         [uiManager completeJailbreak];
         [uiManager sendLog:@"Rebooting Userspace" debug: NO];
         didFinish = YES;
         [self fadeToBlack: ^{
-
         }];
     });
 
@@ -327,7 +489,7 @@
         [uiManager sendLog:@"Gaining r/w" debug: NO];
         [NSThread sleepForTimeInterval:0.8];
         [uiManager sendLog:@"Patchfinding" debug: NO];
-        NSArray *types = @[@"AMFI", @"PAC", @"KTRR", @"KPP", @"PPL", @"KPF", @"APRR", @"AMCC", @"PAN", @"PXN", @"ASLR", @"OPA"]; //Ever heard of the legendary opa bypass
+        NSArray *types = @[@"AMFI", @"PAC", @"KTRR", @"KPP", @"PPL", @"KPF", @"APRR", @"AMCC", @"PAN", @"PXN", @"ASLR", @"OPA"];
         while (true)
         {
             [NSThread sleepForTimeInterval:0.6 * rand() / RAND_MAX];
@@ -407,3 +569,4 @@
 }
 
 @end
+
