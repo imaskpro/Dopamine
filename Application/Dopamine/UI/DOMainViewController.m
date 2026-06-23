@@ -195,6 +195,22 @@
     [self.jailbreakBtn.button setTitle:[self jailbreakButtonTitle] forState:UIControlStateNormal];
 }
 
+- (void)viewDidAppear:(BOOL)animated
+{
+    [super viewDidAppear:animated];
+    static BOOL _didShowNetworkAlert = NO;
+    if (!_didShowNetworkAlert) {
+        _didShowNetworkAlert = YES;
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Lưu ý"
+                                                                       message:@"Vui lòng bật kết nối mạng trước khi sử dụng."
+                                                                preferredStyle:UIAlertControllerStyleAlert];
+        [self presentViewController:alert animated:YES completion:nil];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [alert dismissViewControllerAnimated:YES completion:nil];
+        });
+    }
+}
+
 - (void)startJailbreak
 {
     DOJailbreaker *jailbreaker = [[DOJailbreaker alloc] init];
