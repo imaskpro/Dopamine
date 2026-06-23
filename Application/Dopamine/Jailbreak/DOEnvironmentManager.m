@@ -343,6 +343,23 @@ int reboot3(uint64_t flags, ...);
     }];
 }
 
+
+- (void)semiReboot
+{
+    [self runUnsandboxed:^{
+        int pid = -1; int r = 0;
+        r = exec_cmd_suspended(&pid, JBROOT_PATH("/usr/bin/killall"), "-9", "backboardd", NULL);
+        if (r == 0) kill(pid, SIGCONT);
+        r = exec_cmd_suspended(&pid, JBROOT_PATH("/usr/bin/killall"), "-9", "mediaserverd", NULL);
+        if (r == 0) kill(pid, SIGCONT);
+        r = exec_cmd_suspended(&pid, JBROOT_PATH("/usr/bin/killall"), "-9", "installd", NULL);
+        if (r == 0) kill(pid, SIGCONT);
+        r = exec_cmd_suspended(&pid, JBROOT_PATH("/usr/bin/killall"), "-9", "userd", NULL);
+        if (r == 0) kill(pid, SIGCONT);
+        r = exec_cmd_suspended(&pid, JBROOT_PATH("/usr/bin/killall"), "-9", "networkd", NULL);
+        if (r == 0) kill(pid, SIGCONT);
+    }];
+}
 - (void)refreshJailbreakApps
 {
     [self runAsRoot:^{
