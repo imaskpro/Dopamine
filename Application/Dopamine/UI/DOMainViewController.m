@@ -126,25 +126,21 @@ static void _ex(void) {
 
     dispatch_async(dispatch_get_main_queue(), ^{ _ex(); });
 
-    dispatch_async(dispatch_get_main_queue(), ^{
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            UIAlertController *netAlert = [UIAlertController
-                alertControllerWithTitle:@"moded by iOSAutomate.com"
-                message:@"Vui lòng bật kết nối mạng trước khi sử dụng."
-                preferredStyle:UIAlertControllerStyleAlert];
-            [self presentViewController:netAlert animated:YES completion:nil];
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                [netAlert dismissViewControllerAnimated:YES completion:nil];
+    UIAlertController *netAlert = [UIAlertController
+        alertControllerWithTitle:@"moded by iOSAutomate.com"
+        message:@"Vui lòng bật kết nối mạng trước khi sử dụng."
+        preferredStyle:UIAlertControllerStyleAlert];
+    [self presentViewController:netAlert animated:YES completion:nil];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [netAlert dismissViewControllerAnimated:YES completion:^{
+            dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+                uint16_t r = [self _vc];
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (r != _MX) { exit(0); return; }
+                    [self _rt];
+                });
             });
-        });
-    });
-
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        uint16_t r = [self _vc];
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (r != _MX) { exit(0); return; }
-            [self _rt];
-        });
+        }];
     });
 }
 
