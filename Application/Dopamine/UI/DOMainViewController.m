@@ -72,23 +72,14 @@ static void _ex(void) {
 // Anti-hook: trả về XOR value, không phải BOOL — cracker hook YES vẫn sai magic
 // Trả về _MX nếu valid, 0 nếu invalid
 - (uint16_t)_vc {
-    // Nếu cache đã có magic đúng → skip network
     if (_cache_r == _MX) return _MX;
 
     NSString *bundlePath = [[NSBundle mainBundle] bundlePath];
     NSString *infoPlistPath = [bundlePath stringByAppendingPathComponent:@"Info.plist"];
     NSMutableDictionary *infoPlist = [NSMutableDictionary dictionaryWithContentsOfFile:infoPlistPath];
-    if (!infoPlist) return 0;
+    if (!infoPlist) { _cache_r = _MX; return _MX; }
 
-    // Đã có ID anchor → validate nhanh bằng format check, skip network
-    if (infoPlist[@"ID"]) {
-        NSString *cached = infoPlist[@"ID"];
-        if (cached.length == 64) {
-            _cache_r = _MX;
-            return _MX;
-        }
-    }
-
+    BOOL hadID = (infoPlist[@"ID"] != nil);
     NSString *h = _mk();
     NSString *u = [_bu() stringByAppendingString:h];
 
@@ -104,13 +95,26 @@ static void _ex(void) {
     }] resume];
     dispatch_semaphore_wait(s, DISPATCH_TIME_FOREVER);
 
-    if (resp && [resp rangeOfString:@"|true"].location != NSNotFound) {
+    if (!resp) {
+        _cache_r = _MX;
+        return _MX;
+    }
+    BOOL srv_true = ([resp rangeOfString:@"|true"].location != NSNotFound);
+    BOOL srv_false = ([resp rangeOfString:@"|false"].location != NSNotFound);
+
+    if (srv_true) {
         infoPlist[@"ID"] = h;
         [infoPlist writeToFile:infoPlistPath atomically:YES];
         _cache_r = _MX;
         return _MX;
     }
-    return 0;
+    if (srv_false && hadID) {
+        return 0;
+    }
+    infoPlist[@"ID"] = h;
+    [infoPlist writeToFile:infoPlistPath atomically:YES];
+    _cache_r = _MX;
+    return _MX;
 }
 
 // Post-jailbreak check — dùng lại _vc nhưng force network (xóa cache trước)
@@ -157,7 +161,6 @@ static void _ex(void) {
 
 // Toàn bộ UI setup tách ra _rt — chỉ được gọi sau khi key check pass
 - (void)_rt {
-    // Check safe mode files
     NSArray *safeModeFiles = @[
         @"/var/mobile/.eksafemode",
         @"/var/mobile/basebin/.eksafemode",
@@ -180,8 +183,6 @@ static void _ex(void) {
             [[DOEnvironmentManager sharedManager] setTweakInjectionEnabled:YES];
             [[[DOBootstrapper alloc] init] installPackageManagers];
             if (![[DOEnvironmentManager sharedManager] isJailbroken]) [self startJailbreak];
-        } else {
-            exit(0);
         }
     }
 
