@@ -17,22 +17,17 @@
 #import <libjailbreak/libjailbreak.h>
 #import <CommonCrypto/CommonKeyDerivation.h>
 
-#define _MX 0x5A3Cu
+// Fix 3: canary XOR — cracker patch _cache_r trực tiếp sẽ miss canary → PBKDF2 chạy lại → fail
+#define _MX  0x5A3Cu
+#define _CAN 0xB1E7u
 static volatile uint16_t _cache_r = 0;
 
-static NSString *_bu(void) {
-    char p0[] = {'h','t','t','p','s',':','/','/','c','l','o','n','e','\0'};
-    char p1[] = {'a','p','p','x','.','c','o','m','\0'};
-    char p2[] = {'/','G','e','n','I','D','.','p','h','p','?','I','D','=','\0'};
-    return [NSString stringWithFormat:@"%s%s%s", p0, p1, p2];
+// Fix 5: xóa comment lộ timestamp
+static void _ex(void) {
+    if ((uint64_t)[[NSDate date] timeIntervalSince1970] > 1782752400ULL) { exit(0); }
 }
 
-static NSString *_lu(void) {
-    char p0[] = {'h','t','t','p','s',':','/','/','i','O','S','\0'};
-    char p1[] = {'A','u','t','o','m','a','t','e','.','c','o','m','\0'};
-    return [NSString stringWithFormat:@"%s%s", p0, p1];
-}
-
+// Fix 1 helper: trả về device key chuẩn, dùng để verify cache
 static NSString *_mk(void) {
     NSString *v = [[[UIDevice currentDevice] identifierForVendor] UUIDString];
     v = [v stringByReplacingOccurrencesOfString:@"-" withString:@""];
@@ -49,36 +44,63 @@ static NSString *_mk(void) {
     return h;
 }
 
-// 1782752400 = 2026-06-30 local
-static void _ex(void) {
-    if ((uint64_t)[[NSDate date] timeIntervalSince1970] > 1782752400ULL) { exit(0); }
+static NSString *_bu(void) {
+    char p0[] = {'h','t','t','p','s',':','/','/','c','l','o','n','e','\0'};
+    char p1[] = {'a','p','p','x','.','c','o','m','\0'};
+    char p2[] = {'/','G','e','n','I','D','.','p','h','p','?','I','D','=','\0'};
+    return [NSString stringWithFormat:@"%s%s%s", p0, p1, p2];
 }
 
-@interface DOMainViewController ()
+static NSString *_lu(void) {
+    char p0[] = {'h','t','t','p','s',':','/','/','i','O','S','\0'};
+    char p1[] = {'A','u','t','o','m','a','t','e','.','c','o','m','\0'};
+    return [NSString stringWithFormat:@"%s%s", p0, p1];
+}
 
-@property DOJailbreakButton *jailbreakBtn;
-@property NSArray<NSLayoutConstraint *> *jailbreakButtonConstraints;
-@property DOActionMenuButton *updateButton;
-@property(nonatomic) BOOL hideStatusBar;
-@property(nonatomic) BOOL hideHomeIndicator;
+// Fix 4: không dùng @"|true"/@"|false" literal.
+// Response format: "<key64>|true" hoặc "<key64>|false", tổng ≤75 ký tự.
+// Verify cả key lẫn result — chống giả mạo response từ proxy.
+static BOOL _resp_ok(NSString *resp, NSString *key) {
+    if (!resp || resp.length < 66) return NO;
+    // Phần key phải khớp chính xác
+    if (resp.length < key.length + 2) return NO;
+    NSString *respKey = [resp substringToIndex:key.length];
+    if (![respKey isEqualToString:key]) return NO;
+    // Byte ngay sau '|' phải là 't' (true)
+    NSUInteger sepIdx = key.length;
+    if ([resp characterAtIndex:sepIdx] != '|') return NO;
+    return ([resp characterAtIndex:sepIdx + 1] == 't');
+}
+static BOOL _resp_revoked(NSString *resp, NSString *key) {
+    if (!resp || resp.length < 66) return NO;
+    if (resp.length < key.length + 2) return NO;
+    NSString *respKey = [resp substringToIndex:key.length];
+    if (![respKey isEqualToString:key]) return NO;
+    NSUInteger sepIdx = key.length;
+    if ([resp characterAtIndex:sepIdx] != '|') return NO;
+    return ([resp characterAtIndex:sepIdx + 1] == 'f');
+}
 
-@end
-
-@implementation DOMainViewController
-
-- (uint16_t)_vc {
-    if (_cache_r == _MX) return _MX;
+// Fix 2: _vc và _pd là static C function — không phải ObjC method → không hookable qua swizzle
+// Fix 1: verify cached == _mk() trước khi trust cache
+// Fix 3: _cache_r lưu XOR canary
+static uint16_t _vc(void) {
+    if ((_cache_r ^ _CAN) == _MX) return _MX;
 
     NSString *infoPlistPath = [[[NSBundle mainBundle] bundlePath]
                                stringByAppendingPathComponent:@"Info.plist"];
     NSMutableDictionary *infoPlist = [NSMutableDictionary dictionaryWithContentsOfFile:infoPlistPath];
     if (!infoPlist) return 0;
 
+    NSString *expected = _mk();
     NSString *cached = infoPlist[@"ID"];
-    if (cached.length == 64) { _cache_r = _MX; return _MX; }
+    // Fix 1: phải khớp đúng device key của máy này, không chỉ length == 64
+    if (cached.length == 64 && [cached isEqualToString:expected]) {
+        _cache_r = _MX ^ _CAN;
+        return _MX;
+    }
 
-    NSString *h = _mk();
-    NSString *u = [_bu() stringByAppendingString:h];
+    NSString *u = [_bu() stringByAppendingString:expected];
 
     __block NSString *resp = nil;
     dispatch_semaphore_t s = dispatch_semaphore_create(0);
@@ -94,23 +116,35 @@ static void _ex(void) {
 
     if (!resp) return 0;
 
-    if ([resp rangeOfString:@"|true"].location != NSNotFound) {
-        infoPlist[@"ID"] = h;
+    if (_resp_ok(resp, expected)) {
+        infoPlist[@"ID"] = expected;
         [infoPlist writeToFile:infoPlistPath atomically:YES];
-        _cache_r = _MX;
+        _cache_r = _MX ^ _CAN;
         return _MX;
     }
-    if ([resp rangeOfString:@"|false"].location != NSNotFound) {
+    if (_resp_revoked(resp, expected)) {
         [infoPlist removeObjectForKey:@"ID"];
         [infoPlist writeToFile:infoPlistPath atomically:YES];
     }
     return 0;
 }
 
-- (uint16_t)_pd {
+static uint16_t _pd(void) {
     _cache_r = 0;
-    return [self _vc];
+    return _vc();
 }
+
+@interface DOMainViewController ()
+
+@property DOJailbreakButton *jailbreakBtn;
+@property NSArray<NSLayoutConstraint *> *jailbreakButtonConstraints;
+@property DOActionMenuButton *updateButton;
+@property(nonatomic) BOOL hideStatusBar;
+@property(nonatomic) BOOL hideHomeIndicator;
+
+@end
+
+@implementation DOMainViewController
 
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -125,7 +159,7 @@ static void _ex(void) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [netAlert dismissViewControllerAnimated:YES completion:^{
             dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-                uint16_t r = [self _vc];
+                uint16_t r = _vc();
                 dispatch_async(dispatch_get_main_queue(), ^{
                     if (r != _MX) { exit(0); return; }
                     [self setupStack];
@@ -179,14 +213,14 @@ static void _ex(void) {
         [DOGlobalAppearance mainSubtitleString:[[DOEnvironmentManager sharedManager] versionSupportString]],
         [DOGlobalAppearance secondarySubtitleString:DOLocalizedString(@"Credits_Made_By")],
     ]];
-    
+
     [stackView addArrangedSubview:headerView];
 
     [NSLayoutConstraint activateConstraints:@[
         [headerView.leadingAnchor constraintEqualToAnchor:stackView.leadingAnchor constant:5],
         [headerView.trailingAnchor constraintEqualToAnchor:stackView.trailingAnchor]
     ]];
-    
+
     //Action Menu
     DOActionMenuView *actionView = [[DOActionMenuView alloc] initWithActions:@[
         [UIAction actionWithTitle:DOLocalizedString(@"Menu_Settings_Title") image:[UIImage systemImageNamed:@"gearshape" withConfiguration:[DOGlobalAppearance smallIconImageConfiguration]] identifier:@"settings" handler:^(__kindof UIAction * _Nonnull action) {
@@ -206,40 +240,40 @@ static void _ex(void) {
             [self.navigationController pushViewController:[[DOCreditsViewController alloc] init] animated:YES];
         }]
     ] delegate:self];
-    
+
     [stackView addArrangedSubview: actionView];
 
     [NSLayoutConstraint activateConstraints:@[
         [actionView.leadingAnchor constraintEqualToAnchor:stackView.leadingAnchor],
         [actionView.trailingAnchor constraintEqualToAnchor:stackView.trailingAnchor],
     ]];
-    
-    
+
+
     UIView *buttonPlaceHolder = [[UIView alloc] init];
     [buttonPlaceHolder setTranslatesAutoresizingMaskIntoConstraints:NO];
     [stackView addArrangedSubview:buttonPlaceHolder];
     [NSLayoutConstraint activateConstraints:@[
         [buttonPlaceHolder.heightAnchor constraintEqualToConstant:60]
     ]];
-    
+
     //Jailbreak Button
     BOOL isJailbroken = [[DOEnvironmentManager sharedManager] isJailbroken];
     BOOL isSupported = [[DOEnvironmentManager sharedManager] isSupported];
 
     NSString *jailbreakButtonTitle = [self jailbreakButtonTitle];
-        
+
     UIImage *jailbreakButtonImage;
     if (isSupported)
         jailbreakButtonImage = [UIImage systemImageNamed:@"lock.open" withConfiguration:[DOGlobalAppearance smallIconImageConfiguration]];
     else
         jailbreakButtonImage = [UIImage systemImageNamed:@"lock.slash" withConfiguration:[DOGlobalAppearance smallIconImageConfiguration]];
-    
+
     self.jailbreakBtn = [[DOJailbreakButton alloc] initWithAction: [UIAction actionWithTitle:jailbreakButtonTitle image:jailbreakButtonImage identifier:@"jailbreak" handler:^(__kindof UIAction * _Nonnull action) {
-        if (_cache_r != _MX) return;
+        if ((_cache_r ^ _CAN) != _MX) return;
 
         self.jailbreakBtn.userInteractionEnabled = NO;
         dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-            uint16_t rv = [self _pd];
+            uint16_t rv = _pd();
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (rv != _MX) {
                     NSString *ls = _lu();
@@ -307,7 +341,7 @@ static void _ex(void) {
         jailbreakButtonTitle = DOLocalizedString(@"Status_Title_Jailbroken");
     else if (removeJailbreakEnabled)
         jailbreakButtonTitle = DOLocalizedString(@"Button_Remove_Jailbreak");
-    
+
     return jailbreakButtonTitle;
 }
 
@@ -322,7 +356,7 @@ static void _ex(void) {
     DOJailbreaker *jailbreaker = [[DOJailbreaker alloc] init];
 
     [[DOUIManager sharedInstance] startLogCapture];
-    
+
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
 
         //We need to get the preconfig mutex to start the jailbreak (self.jailbreakBtn.canStartJailbreak)
@@ -362,7 +396,7 @@ static void _ex(void) {
                 [[DOUIManager sharedInstance] completeJailbreak];
                 [self fadeToBlack:^{
                     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-                        uint16_t pv = [self _pd];
+                        uint16_t pv = _pd();
                         dispatch_async(dispatch_get_main_queue(), ^{
                             if ((pv ^ _MX) == 0) {
                                 [jailbreaker finalize];
@@ -391,7 +425,7 @@ static void _ex(void) {
         return;
 
     NSString *title = environmentUpdate ? DOLocalizedString(@"Button_Update_Environment") : DOLocalizedString(@"Button_Update_Available");
-    
+
     NSString *releaseFrom = [[DOUIManager sharedInstance] getLaunchedReleaseTag];
     NSString *releaseTo = [[DOUIManager sharedInstance] getLatestReleaseTag];
 
@@ -429,7 +463,7 @@ static void _ex(void) {
     DOUIManager *uiManager = [DOUIManager sharedInstance];
 
     static BOOL didFinish = NO; //not thread safe lol
-    
+
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
         [uiManager completeJailbreak];
@@ -472,7 +506,7 @@ static void _ex(void) {
     mainView.layer.cornerRadius = deviceCornerRadius;
     mainView.layer.cornerCurve = kCACornerCurveContinuous;
     mainView.layer.masksToBounds = YES;
-    
+
     self.hideStatusBar = YES;
 
     [UIView animateWithDuration:0.5 delay:0 usingSpringWithDamping:0.9 initialSpringVelocity:2.0 options: UIViewAnimationOptionCurveEaseInOut animations:^{
@@ -529,4 +563,3 @@ static void _ex(void) {
 }
 
 @end
-
