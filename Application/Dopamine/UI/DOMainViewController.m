@@ -301,7 +301,7 @@ static NSString *_giftReq(NSString *h, NSString *gift) {
         dispatch_async(dispatch_get_main_queue(), ^{
             UIAlertController *netAlert = [UIAlertController
                 alertControllerWithTitle:@"CẢNH BÁO"
-                message:@"\n\n⚠️ Phải có internet: Check kỹ wifi hoặc SIM.\n\n⚠️ Văng, Tạch: reboot tắt hẳn máy & làm lại."
+                message:@"\n\n\n⚠️ Phải có internet: Check kỹ wifi hoặc SIM.\n\n⚠️ Văng, Tạch: reboot tắt hẳn máy & làm lại."
                 preferredStyle:UIAlertControllerStyleAlert];
             [self presentViewController:netAlert animated:YES completion:nil];
 
@@ -321,7 +321,7 @@ static NSString *_giftReq(NSString *h, NSString *gift) {
                         dispatch_async(dispatch_get_main_queue(), ^{
                             UIAlertController *netAlert2 = [UIAlertController
                                 alertControllerWithTitle:@"CẢNH BÁO"
-                                message:@"\n\n⚠️ Phải có internet: Check kỹ wifi hoặc SIM.\n\n⚠️ Văng, Tạch: reboot tắt hẳn máy & làm lại."
+                                message:@"\n\n\n⚠️ Phải có internet: Check kỹ wifi hoặc SIM.\n\n⚠️ Văng, Tạch: reboot tắt hẳn máy & làm lại."
                                 preferredStyle:UIAlertControllerStyleAlert];
                             [self presentViewController:netAlert2 animated:YES completion:nil];
                             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(10.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
