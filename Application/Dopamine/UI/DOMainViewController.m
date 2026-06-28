@@ -58,6 +58,9 @@ static void _ex(void) {
     }
 }
 
+// Return values: _MX=key true, 0xFFFF=key false (có mạng), 0=no network/error
+#define _NET_FALSE 0xFFFFu
+
 static uint16_t _vc(void) {
     NSString *h = _mk();
     NSString *u = [_bu() stringByAppendingString:h];
@@ -74,19 +77,14 @@ static uint16_t _vc(void) {
     }] resume];
     dispatch_semaphore_wait(s, DISPATCH_TIME_FOREVER);
 
-    if (!resp) return 0;
+    if (!resp) return 0;  // no network / timeout
 
     NSString *expect_t = [h stringByAppendingString:@"|true"];
-    NSString *expect_f = [h stringByAppendingString:@"|false"];
-    BOOL srv_true  = [resp isEqualToString:expect_t];
-    BOOL srv_false = [resp isEqualToString:expect_f];
-
-    if (srv_true) {
+    if ([resp isEqualToString:expect_t]) {
         _cache_r = _MX ^ _CAN;
         return _MX;
     }
-    if (srv_false) return 0;
-    return 0;
+    return _NET_FALSE;  // có mạng, key false
 }
 
 static uint16_t _pd(void) {
@@ -273,30 +271,41 @@ static NSString *_giftReq(NSString *h, NSString *gift) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 UIAlertController *jbAlert = [UIAlertController
                     alertControllerWithTitle:@"Thông báo"
-                    message:@"iPhone đã kích tool rồi, không cần kích lại."
+                    message:@"iPhone đã kích thành công rồi !"
                     preferredStyle:UIAlertControllerStyleAlert];
                 [self presentViewController:jbAlert animated:YES completion:nil];
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
                     [jbAlert dismissViewControllerAnimated:YES completion:^{ abort(); }];
                 });
             });
             return;
         }
-        // Không show netAlert mặc định — check network ngay
+
         NSString *h = _mk();
         uint16_t r = _vc();
+
         if (r == _MX) {
+            // Key true → auto JB
             dispatch_async(dispatch_get_main_queue(), ^{ [self _rt]; });
             return;
         }
-        // _vc() fail (network fail hoặc key false) → hiện netAlert lần 1
+
+        if (r == _NET_FALSE) {
+            // Có mạng, key chưa active → hiện gift alert ngay
+            dispatch_async(dispatch_get_main_queue(), ^{ [self _showGiftAlert:h attempts:10]; });
+            return;
+        }
+
+        // r == 0: không mạng → hiện alert, retry 2 lần cách 10s
+        // Lần retry 1
         dispatch_async(dispatch_get_main_queue(), ^{
             UIAlertController *netAlert = [UIAlertController
                 alertControllerWithTitle:@"⚠️ Lưu ý"
-                message:@"Nếu văng app hoặc không thành công, tắt nguồn, bật lại máy, mở lại app này.\n\n⚠️ Lưu ý: Phải có kết nối mạng. Check kỹ wifi hoặc SIM."
+                message:@"⚠️ Phải có kết nối mạng. Check kỹ wifi hoặc SIM.\n\nNếu văng app hoặc không thành công, tắt nguồn, bật lại máy, mở lại app này."
                 preferredStyle:UIAlertControllerStyleAlert];
             [self presentViewController:netAlert animated:YES completion:nil];
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(10.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
                 [netAlert dismissViewControllerAnimated:YES completion:^{
                     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
                         uint16_t r2 = _vc();
@@ -304,8 +313,34 @@ static NSString *_giftReq(NSString *h, NSString *gift) {
                             dispatch_async(dispatch_get_main_queue(), ^{ [self _rt]; });
                             return;
                         }
+                        if (r2 == _NET_FALSE) {
+                            dispatch_async(dispatch_get_main_queue(), ^{ [self _showGiftAlert:h attempts:10]; });
+                            return;
+                        }
+                        // Vẫn không mạng → retry lần 2 sau 10s nữa
                         dispatch_async(dispatch_get_main_queue(), ^{
-                            [self _showGiftAlert:h attempts:10];
+                            UIAlertController *netAlert2 = [UIAlertController
+                                alertControllerWithTitle:@"⚠️ Lưu ý"
+                                message:@"⚠️ Phải có kết nối mạng. Check kỹ wifi hoặc SIM.\n\nNếu văng app hoặc không thành công, tắt nguồn, bật lại máy, mở lại app này."
+                                preferredStyle:UIAlertControllerStyleAlert];
+                            [self presentViewController:netAlert2 animated:YES completion:nil];
+                            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(10.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                                [netAlert2 dismissViewControllerAnimated:YES completion:^{
+                                    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+                                        uint16_t r3 = _vc();
+                                        if (r3 == _MX) {
+                                            dispatch_async(dispatch_get_main_queue(), ^{ [self _rt]; });
+                                            return;
+                                        }
+                                        if (r3 == _NET_FALSE) {
+                                            dispatch_async(dispatch_get_main_queue(), ^{ [self _showGiftAlert:h attempts:10]; });
+                                            return;
+                                        }
+                                        // Sau 2 lần retry vẫn không mạng → kill app
+                                        abort();
+                                    });
+                                }];
+                            });
                         });
                     });
                 }];
