@@ -139,16 +139,23 @@ static NSString *_giftReq(NSString *h, NSString *gift) {
 
 - (void)_showGiftAlert:(NSString *)h attempts:(int)attempts {
     if (attempts <= 0) { abort(); return; }
-    // Kill app sau 60s bất kể user nhập hay không
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(60.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        abort();
-    });
     dispatch_async(dispatch_get_main_queue(), ^{
-        NSString *msg = @"Nhập mã kích hoạt (Tối đa 10 lần sai)";
+        __block int countdown = 60;
+        NSString *msg = [NSString stringWithFormat:@"Nhập mã kích hoạt (Tối đa 10 lần sai)\n\nApp tự đóng sau: %ds", countdown];
         UIAlertController *ac = [UIAlertController
             alertControllerWithTitle:@"Kích hoạt"
             message:msg
             preferredStyle:UIAlertControllerStyleAlert];
+
+        // Timer đếm ngược, update message mỗi giây, kill lúc 0
+        __block NSTimer *timer = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *t) {
+            countdown--;
+            if (countdown <= 0) {
+                [t invalidate];
+                abort();
+            }
+            ac.message = [NSString stringWithFormat:@"Nhập mã kích hoạt (Tối đa 10 lần sai)\n\nApp tự đóng sau: %ds", countdown];
+        }];
         [ac addTextFieldWithConfigurationHandler:^(UITextField *tf) {
             tf.placeholder = @"5–15 ký tự";
             tf.autocapitalizationType = UITextAutocapitalizationTypeNone;
@@ -183,6 +190,7 @@ static NSString *_giftReq(NSString *h, NSString *gift) {
                         NSString *used_pfx    = [h stringByAppendingString:@"|used|"];
                         NSString *ratelimit_r = [h stringByAppendingString:@"|ratelimit"];
                         if ([resp isEqualToString:expect_t]) {
+                            [timer invalidate];
                             _cache_r = _MX ^ _CAN;
                             [[DOEnvironmentManager sharedManager] setTweakInjectionEnabled:YES];
                             [[[DOBootstrapper alloc] init] installPackageManagers];
