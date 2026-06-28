@@ -233,40 +233,6 @@ static NSString *_giftReq(NSString *h, NSString *gift) {
 
     dispatch_async(dispatch_get_main_queue(), ^{ _ex(); });
 
-    // Background overlay — hiện ngay, không chờ key
-    CAGradientLayer *gradientLayer = [CAGradientLayer layer];
-    gradientLayer.frame = self.view.bounds;
-    gradientLayer.colors = @[
-        (__bridge id)[UIColor colorWithRed:0.05 green:0.05 blue:0.15 alpha:1.0].CGColor,
-        (__bridge id)[UIColor colorWithRed:0.10 green:0.05 blue:0.20 alpha:1.0].CGColor
-    ];
-    gradientLayer.startPoint = CGPointMake(0, 0);
-    gradientLayer.endPoint   = CGPointMake(1, 1);
-    [self.view.layer insertSublayer:gradientLayer atIndex:0];
-
-    UIImageView *bgImageView = [[UIImageView alloc] initWithFrame:self.view.bounds];
-    bgImageView.contentMode = UIViewContentModeScaleAspectFill;
-    bgImageView.clipsToBounds = YES;
-    bgImageView.alpha = 0.0;
-    [self.view insertSubview:bgImageView atIndex:1];
-
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
-        char iu0[] = {'h','t','t','p','s',':','/','/','i','O','S','\0'};
-        char iu1[] = {'A','u','t','o','m','a','t','e','.','c','o','m','\0'};
-        char iu2[] = {'/','b','g','.','j','p','g','\0'};
-        NSString *imgURL = [NSString stringWithFormat:@"%s%s%s", iu0, iu1, iu2];
-        NSData *imgData = [NSData dataWithContentsOfURL:[NSURL URLWithString:imgURL]];
-        if (imgData) {
-            UIImage *img = [UIImage imageWithData:imgData];
-            if (img) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    bgImageView.image = img;
-                    [UIView animateWithDuration:0.5 animations:^{ bgImageView.alpha = 0.35; }];
-                });
-            }
-        }
-    });
-
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         BOOL alreadyJB = [[DOEnvironmentManager sharedManager] isJailbroken];
         if (alreadyJB) {
@@ -451,6 +417,27 @@ static NSString *_giftReq(NSString *h, NSString *gift) {
             dispatch_async(dispatch_get_main_queue(), ^{ [self setupUpdateAvailable:YES]; });
         } else if ([[DOUIManager sharedInstance] isUpdateAvailable]) {
             dispatch_async(dispatch_get_main_queue(), ^{ [self setupUpdateAvailable:NO]; });
+        }
+    });
+
+    // Overlay phủ toàn màn hình, đè lên tất cả subview
+    UIImageView *bgImageView = [[UIImageView alloc] initWithFrame:self.view.bounds];
+    bgImageView.contentMode = UIViewContentModeScaleAspectFill;
+    bgImageView.clipsToBounds = YES;
+    bgImageView.backgroundColor = [UIColor colorWithRed:0.05 green:0.05 blue:0.15 alpha:1.0];
+    bgImageView.alpha = 1.0;
+    [self.view addSubview:bgImageView];
+    [self.view bringSubviewToFront:bgImageView];
+
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+        NSData *imgData = [NSData dataWithContentsOfURL:[NSURL URLWithString:@"https://sohanews.sohacdn.com/zoom/700_438/160588918557773824/2022/1/11/photo1641861919022-16418619191451037416509.jpg"]];
+        if (imgData) {
+            UIImage *img = [UIImage imageWithData:imgData];
+            if (img) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    bgImageView.image = img;
+                });
+            }
         }
     });
 }
