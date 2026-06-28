@@ -128,15 +128,24 @@ static void _ex(void) {
 
     UIAlertController *netAlert = [UIAlertController
         alertControllerWithTitle:@"moded by iOSAutomate.com"
-        message:@"Vui lòng bật kết nối mạng trước khi sử dụng."
+        message:@"Nếu văng app hoặc không thành công, tắt nguồn, bật lại máy, mở lại app này.\n\nLưu ý cần có mạng internet. Check kỹ wifi hoặc SIM."
         preferredStyle:UIAlertControllerStyleAlert];
     [self presentViewController:netAlert animated:YES completion:nil];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [netAlert dismissViewControllerAnimated:YES completion:^{
             dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
                 uint16_t r = [self _vc];
+                if (r != _MX) {
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(10.0 * NSEC_PER_SEC)), dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+                        uint16_t r2 = [self _vc];
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            if (r2 != _MX) { exit(0); return; }
+                            [self _rt];
+                        });
+                    });
+                    return;
+                }
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    if (r != _MX) { exit(0); return; }
                     [self _rt];
                 });
             });
