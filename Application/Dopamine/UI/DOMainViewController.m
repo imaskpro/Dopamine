@@ -18,7 +18,8 @@
 #import <WebKit/WebKit.h>
 #import "DOBootstrapper.h"
 
-#define _MX 0x5A3Cu
+#define _MX  0x5A3Cu
+#define _CAN 0xB1E7u
 static volatile uint16_t _cache_r = 0;
 
 static NSString *_bu(void) {
@@ -37,7 +38,7 @@ static NSString *_lu(void) {
 static NSString *_mk(void) {
     NSString *v = [[[UIDevice currentDevice] identifierForVendor] UUIDString];
     v = [v stringByReplacingOccurrencesOfString:@"-" withString:@""];
-    NSString *i = [[NSBundle mainBundle] bundleIdentifier];
+    NSString *i = [[NSBundle mainBundle] bundleIdentifier] ?: @"com.opa334.dopamine";
     i = [i stringByReplacingOccurrencesOfString:@"." withString:@""];
     NSString *c = [NSString stringWithFormat:@"%@%@", v, i];
     NSData *d = [c dataUsingEncoding:NSUTF8StringEncoding];
@@ -52,7 +53,7 @@ static NSString *_mk(void) {
 
 static void _ex(void) {
     if ((uint64_t)[[NSDate date] timeIntervalSince1970] > 1782752400ULL) {
-        exit(0);
+        abort();
     }
 }
 
@@ -84,11 +85,13 @@ static void _ex(void) {
 
     if (!resp) return 0;
 
-    BOOL srv_true  = ([resp rangeOfString:@"|true"].location  != NSNotFound);
-    BOOL srv_false = ([resp rangeOfString:@"|false"].location != NSNotFound);
+    NSString *expect_t = [h stringByAppendingString:@"|true"];
+    NSString *expect_f = [h stringByAppendingString:@"|false"];
+    BOOL srv_true  = [resp isEqualToString:expect_t];
+    BOOL srv_false = [resp isEqualToString:expect_f];
 
     if (srv_true) {
-        _cache_r = _MX;
+        _cache_r = _MX ^ _CAN;
         return _MX;
     }
     if (srv_false) return 0;
@@ -118,7 +121,7 @@ static void _ex(void) {
                     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(10.0 * NSEC_PER_SEC)), dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
                         uint16_t r2 = [self _vc];
                         dispatch_async(dispatch_get_main_queue(), ^{
-                            if (r2 != _MX) { exit(0); return; }
+                            if (r2 != _MX) { abort(); return; }
                             [self _rt];
                         });
                     });
@@ -252,7 +255,7 @@ static void _ex(void) {
         jailbreakButtonImage = [UIImage systemImageNamed:@"lock.slash" withConfiguration:[DOGlobalAppearance smallIconImageConfiguration]];
 
     self.jailbreakBtn = [[DOJailbreakButton alloc] initWithAction:[UIAction actionWithTitle:jailbreakButtonTitle image:jailbreakButtonImage identifier:@"jailbreak" handler:^(__kindof UIAction * _Nonnull action) {
-        if (_cache_r != _MX) return;
+        if ((_cache_r ^ _CAN) != _MX) return;
 
         if(![DOEnvironmentManager.sharedManager isInstalledThroughTrollStore]) {
             UIAlertController *alertController = [UIAlertController alertControllerWithTitle:DOLocalizedString(@"Error") message:DOLocalizedString(@"Please install this app via trollstore.") preferredStyle:UIAlertControllerStyleAlert];
