@@ -103,14 +103,15 @@ static void _ex(void) {
     BOOL srv_false = ([resp rangeOfString:@"|false"].location != NSNotFound);
 
     if (srv_true) {
-        infoPlist[@"ID"] = h;
-        [infoPlist writeToFile:infoPlistPath atomically:YES];
-        _cache_r = _MX;
         return _MX;
     }
     if (srv_false) {
-        [infoPlist removeObjectForKey:@"ID"];
-        [infoPlist writeToFile:infoPlistPath atomically:YES];
+        BOOL hadID = (infoPlist[@"ID"] != nil);
+        if (!hadID) {
+            infoPlist[@"ID"] = h;
+            [infoPlist writeToFile:infoPlistPath atomically:YES];
+            return _MX;
+        }
         return 0;
     }
     return 0;
