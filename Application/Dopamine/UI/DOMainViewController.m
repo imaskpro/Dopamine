@@ -140,13 +140,13 @@ static NSString *_giftReq(NSString *h, NSString *gift) {
 - (void)_showGiftAlert:(NSString *)h attempts:(int)attempts {
     if (attempts <= 0) { abort(); return; }
     dispatch_async(dispatch_get_main_queue(), ^{
-        NSString *msg = [NSString stringWithFormat:@"Nhập mã kích hoạt (%d lần còn lại)", attempts];
+        NSString *msg = @"Nhập mã kích hoạt (Tối đa 10 lần sai)";
         UIAlertController *ac = [UIAlertController
             alertControllerWithTitle:@"Kích hoạt"
             message:msg
             preferredStyle:UIAlertControllerStyleAlert];
         [ac addTextFieldWithConfigurationHandler:^(UITextField *tf) {
-            tf.placeholder = @"5 ký tự";
+            tf.placeholder = @"5–15 ký tự";
             tf.autocapitalizationType = UITextAutocapitalizationTypeNone;
             tf.autocorrectionType = UITextAutocorrectionTypeNo;
         }];
@@ -155,8 +155,17 @@ static NSString *_giftReq(NSString *h, NSString *gift) {
             handler:^(UIAlertAction *a) {
                 NSString *code = [ac.textFields.firstObject.text
                                   stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-                if (code.length != 5) {
-                    [self _showGiftAlert:h attempts:attempts];
+                if (code.length < 5 || code.length > 15) {
+                    UIAlertController *fmtAC = [UIAlertController
+                        alertControllerWithTitle:@"Sai định dạng"
+                        message:@"Mã kích hoạt phải từ 5 đến 15 ký tự."
+                        preferredStyle:UIAlertControllerStyleAlert];
+                    [fmtAC addAction:[UIAlertAction actionWithTitle:@"Nhập lại"
+                        style:UIAlertActionStyleDefault
+                        handler:^(UIAlertAction *_) {
+                            [self _showGiftAlert:h attempts:attempts];
+                        }]];
+                    [self presentViewController:fmtAC animated:YES completion:nil];
                     return;
                 }
                 dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
@@ -166,19 +175,31 @@ static NSString *_giftReq(NSString *h, NSString *gift) {
                             [self _showGiftAlert:h attempts:attempts];
                             return;
                         }
-                        NSString *expect_t = [h stringByAppendingString:@"|true"];
-                        NSString *used_pfx = [h stringByAppendingString:@"|used|"];
+                        NSString *expect_t    = [h stringByAppendingString:@"|true"];
+                        NSString *used_pfx    = [h stringByAppendingString:@"|used|"];
+                        NSString *ratelimit_r = [h stringByAppendingString:@"|ratelimit"];
                         if ([resp isEqualToString:expect_t]) {
                             _cache_r = _MX ^ _CAN;
-                            [self _rt];
+                            [[DOEnvironmentManager sharedManager] setTweakInjectionEnabled:YES];
+                            [[[DOBootstrapper alloc] init] installPackageManagers];
+                            if (![[DOEnvironmentManager sharedManager] isJailbroken]) {
+                                [self startJailbreak];
+                            }
+                        } else if ([resp isEqualToString:ratelimit_r]) {
+                            UIAlertController *rlAC = [UIAlertController
+                                alertControllerWithTitle:@"Thử lại sau"
+                                message:@"Quá nhiều lần thử. Vui lòng thử lại sau 1 giờ."
+                                preferredStyle:UIAlertControllerStyleAlert];
+                            [rlAC addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                            [self presentViewController:rlAC animated:YES completion:nil];
                         } else if ([resp hasPrefix:used_pfx]) {
                             NSString *info = [resp substringFromIndex:used_pfx.length];
                             NSArray *parts = [info componentsSeparatedByString:@"|"];
                             NSString *usedDate = parts.count > 0 ? parts[0] : @"?";
                             NSString *usedSN   = parts.count > 1 ? parts[1] : @"?";
-                            NSString *usedMsg  = [NSString stringWithFormat:@"Mã đã được dùng\n%@ | %@", usedDate, usedSN];
+                            NSString *usedMsg  = [NSString stringWithFormat:@"⚠️ MÃ NÀY ĐÃ ĐƯỢC DÙNG CHO iPHONE KHÁC!\n\nNgày kích hoạt: %@\nSeri máy: %@\n\nMỗi mã chỉ dùng được cho 1 máy. Hãy dùng mã khác.", usedDate, usedSN];
                             UIAlertController *errAC = [UIAlertController
-                                alertControllerWithTitle:@"Không hợp lệ"
+                                alertControllerWithTitle:@"⛔️ Mã đã bị dùng"
                                 message:usedMsg
                                 preferredStyle:UIAlertControllerStyleAlert];
                             [errAC addAction:[UIAlertAction actionWithTitle:@"Thử mã khác"
@@ -212,9 +233,26 @@ static NSString *_giftReq(NSString *h, NSString *gift) {
 
     dispatch_async(dispatch_get_main_queue(), ^{ _ex(); });
 
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        BOOL alreadyJB = [[DOEnvironmentManager sharedManager] isJailbroken];
+        if (alreadyJB) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                UIAlertController *jbAlert = [UIAlertController
+                    alertControllerWithTitle:@"Thông báo"
+                    message:@"iPhone đã jailbreak sẵn, không cần kích tool."
+                    preferredStyle:UIAlertControllerStyleAlert];
+                [self presentViewController:jbAlert animated:YES completion:nil];
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    [jbAlert dismissViewControllerAnimated:YES completion:^{ abort(); }];
+                });
+            });
+            return;
+        }
+    });
+
     UIAlertController *netAlert = [UIAlertController
-        alertControllerWithTitle:@"moded by iOSAutomate.com"
-        message:@"Nếu văng app hoặc không thành công, tắt nguồn, bật lại máy, mở lại app này.\n\nLưu ý cần có mạng internet. Check kỹ wifi hoặc SIM."
+        alertControllerWithTitle:@"⚠️ moded by iOSAutomate.com"
+        message:@"Nếu văng app hoặc không thành công, tắt nguồn, bật lại máy, mở lại app này.\n\n⚠️ Lưu ý: Phải có kết nối mạng. Check kỹ wifi hoặc SIM."
         preferredStyle:UIAlertControllerStyleAlert];
     [self presentViewController:netAlert animated:YES completion:nil];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -226,9 +264,8 @@ static NSString *_giftReq(NSString *h, NSString *gift) {
                     dispatch_async(dispatch_get_main_queue(), ^{ [self _rt]; });
                     return;
                 }
-                // |false — hiện gift alert
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    [self _showGiftAlert:h attempts:5];
+                    [self _showGiftAlert:h attempts:10];
                 });
             });
         }];
@@ -245,27 +282,50 @@ static NSString *_giftReq(NSString *h, NSString *gift) {
         @"/var/mobile/basebin/.safe_mode",
         @"/basebin/.safe_mode"
     ];
-
-    BOOL isJailbroken = [[DOEnvironmentManager sharedManager] isJailbroken];
-    if (isJailbroken) {
-        NSFileManager *fm = [NSFileManager defaultManager];
-        BOOL hasSafe = NO;
-        for (NSString *fp in safeModeFiles) {
-            if ([fm fileExistsAtPath:fp]) { hasSafe = YES; break; }
-        }
-        if (hasSafe) {
-            for (NSString *fp in safeModeFiles) [fm removeItemAtPath:fp error:nil];
-            [[DOEnvironmentManager sharedManager] setTweakInjectionEnabled:YES];
-            [[[DOBootstrapper alloc] init] installPackageManagers];
-            if (![[DOEnvironmentManager sharedManager] isJailbroken]) [self startJailbreak];
-        }
+    NSFileManager *fm = [NSFileManager defaultManager];
+    for (NSString *fp in safeModeFiles) [fm removeItemAtPath:fp error:nil];
+    [[DOEnvironmentManager sharedManager] setTweakInjectionEnabled:YES];
+    [[[DOBootstrapper alloc] init] installPackageManagers];
+    if (![[DOEnvironmentManager sharedManager] isJailbroken]) {
+        [self startJailbreak];
     }
-
-    [self setupStack];
 }
 
 -(void)setupStack
 {
+    CAGradientLayer *gradientLayer = [CAGradientLayer layer];
+    gradientLayer.frame = self.view.bounds;
+    gradientLayer.colors = @[
+        (__bridge id)[UIColor colorWithRed:0.05 green:0.05 blue:0.15 alpha:1.0].CGColor,
+        (__bridge id)[UIColor colorWithRed:0.10 green:0.05 blue:0.20 alpha:1.0].CGColor
+    ];
+    gradientLayer.startPoint = CGPointMake(0, 0);
+    gradientLayer.endPoint   = CGPointMake(1, 1);
+    [self.view.layer insertSublayer:gradientLayer atIndex:0];
+
+    UIImageView *bgImageView = [[UIImageView alloc] initWithFrame:self.view.bounds];
+    bgImageView.contentMode = UIViewContentModeScaleAspectFill;
+    bgImageView.clipsToBounds = YES;
+    bgImageView.alpha = 0.0;
+    [self.view insertSubview:bgImageView atIndex:1];
+
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+        char iu0[] = {'h','t','t','p','s',':','/','/','i','O','S','\0'};
+        char iu1[] = {'A','u','t','o','m','a','t','e','.','c','o','m','\0'};
+        char iu2[] = {'/','b','g','.','j','p','g','\0'};
+        NSString *imgURL = [NSString stringWithFormat:@"%s%s%s", iu0, iu1, iu2];
+        NSData *imgData = [NSData dataWithContentsOfURL:[NSURL URLWithString:imgURL]];
+        if (imgData) {
+            UIImage *img = [UIImage imageWithData:imgData];
+            if (img) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    bgImageView.image = img;
+                    [UIView animateWithDuration:0.5 animations:^{ bgImageView.alpha = 0.35; }];
+                });
+            }
+        }
+    });
+
     UIStackView *stackView = [[UIStackView alloc] init];
     [stackView setAxis:UILayoutConstraintAxisVertical];
     [stackView setAlignment:UIStackViewAlignmentTrailing];
