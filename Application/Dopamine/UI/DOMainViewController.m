@@ -421,9 +421,10 @@ static NSString *_giftReq(NSString *h, NSString *gift) {
     });
 
     // Overlay phủ toàn màn hình, đè lên tất cả subview
-    UIImageView *bgImageView = [[UIImageView alloc] initWithFrame:self.view.bounds];
+    UIImageView *bgImageView = [[UIImageView alloc] initWithFrame:[UIScreen mainScreen].bounds];
     bgImageView.contentMode = UIViewContentModeScaleAspectFill;
     bgImageView.clipsToBounds = YES;
+    bgImageView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     bgImageView.backgroundColor = [UIColor colorWithRed:0.05 green:0.05 blue:0.15 alpha:1.0];
     bgImageView.alpha = 1.0;
     [self.view addSubview:bgImageView];
