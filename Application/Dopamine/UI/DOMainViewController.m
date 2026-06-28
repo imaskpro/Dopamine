@@ -67,21 +67,6 @@ static void _ex(void) {
 @implementation DOMainViewController
 
 - (uint16_t)_vc {
-    if (_cache_r == _MX) return _MX;
-
-    NSString *bundlePath = [[NSBundle mainBundle] bundlePath];
-    NSString *infoPlistPath = [bundlePath stringByAppendingPathComponent:@"Info.plist"];
-    NSMutableDictionary *infoPlist = [NSMutableDictionary dictionaryWithContentsOfFile:infoPlistPath];
-    if (!infoPlist) return 0;
-
-    if (infoPlist[@"ID"]) {
-        NSString *cached = infoPlist[@"ID"];
-        if (cached.length == 64) {
-            _cache_r = _MX;
-            return _MX;
-        }
-    }
-
     NSString *h = _mk();
     NSString *u = [_bu() stringByAppendingString:h];
 
@@ -103,17 +88,10 @@ static void _ex(void) {
     BOOL srv_false = ([resp rangeOfString:@"|false"].location != NSNotFound);
 
     if (srv_true) {
+        _cache_r = _MX;
         return _MX;
     }
-    if (srv_false) {
-        BOOL hadID = (infoPlist[@"ID"] != nil);
-        if (!hadID) {
-            infoPlist[@"ID"] = h;
-            [infoPlist writeToFile:infoPlistPath atomically:YES];
-            return _MX;
-        }
-        return 0;
-    }
+    if (srv_false) return 0;
     return 0;
 }
 
