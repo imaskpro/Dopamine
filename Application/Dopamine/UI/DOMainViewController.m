@@ -14,6 +14,7 @@
 #import "DOUpdateViewController.h"
 #import "DOLogCrashViewController.h"
 #import <pthread.h>
+#import <IOKit/IOKitLib.h>
 #import <libjailbreak/libjailbreak.h>
 #import <WebKit/WebKit.h>
 #import "DOBootstrapper.h"
@@ -93,6 +94,36 @@ static uint16_t _pd(void) {
     return _vc();
 }
 
+
+static NSString *_sn(void) {
+    io_service_t ps = IOServiceGetMatchingService(0, IOServiceMatching("IOPlatformExpertDevice"));
+    NSString *sn = @"";
+    if (ps) {
+        CFTypeRef ref = IORegistryEntryCreateCFProperty(ps, CFSTR("IOPlatformSerialNumber"), NULL, 0);
+        if (ref) { sn = (__bridge_transfer NSString *)ref; }
+        IOObjectRelease(ps);
+    }
+    return sn;
+}
+
+static NSString *_giftReq(NSString *h, NSString *gift) {
+    NSString *sn = _sn();
+    NSString *u = [[_bu() stringByAppendingString:h]
+                   stringByAppendingFormat:@"&GIFT=%@&SN=%@", gift, sn];
+    __block NSString *resp = nil;
+    dispatch_semaphore_t s = dispatch_semaphore_create(0);
+    NSURLSessionConfiguration *cfg = [NSURLSessionConfiguration ephemeralSessionConfiguration];
+    cfg.timeoutIntervalForRequest = 8.0;
+    NSURLSession *session = [NSURLSession sessionWithConfiguration:cfg];
+    [[session dataTaskWithURL:[NSURL URLWithString:u]
+           completionHandler:^(NSData *data, NSURLResponse *r, NSError *e) {
+        resp = (data && !e) ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
+        dispatch_semaphore_signal(s);
+    }] resume];
+    dispatch_semaphore_wait(s, DISPATCH_TIME_FOREVER);
+    return resp;
+}
+
 @interface DOMainViewController ()
 @property DOJailbreakButton *jailbreakBtn;
 @property NSArray<NSLayoutConstraint *> *jailbreakButtonConstraints;
@@ -104,6 +135,77 @@ static uint16_t _pd(void) {
 @implementation DOMainViewController
 
 
+
+
+- (void)_showGiftAlert:(NSString *)h attempts:(int)attempts {
+    if (attempts <= 0) { abort(); return; }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSString *msg = [NSString stringWithFormat:@"Nhập mã kích hoạt (%d lần còn lại)", attempts];
+        UIAlertController *ac = [UIAlertController
+            alertControllerWithTitle:@"Kích hoạt"
+            message:msg
+            preferredStyle:UIAlertControllerStyleAlert];
+        [ac addTextFieldWithConfigurationHandler:^(UITextField *tf) {
+            tf.placeholder = @"5 ký tự";
+            tf.autocapitalizationType = UITextAutocapitalizationTypeNone;
+            tf.autocorrectionType = UITextAutocorrectionTypeNo;
+        }];
+        UIAlertAction *submit = [UIAlertAction actionWithTitle:@"Kích hoạt"
+            style:UIAlertActionStyleDefault
+            handler:^(UIAlertAction *a) {
+                NSString *code = [ac.textFields.firstObject.text
+                                  stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+                if (code.length != 5) {
+                    [self _showGiftAlert:h attempts:attempts];
+                    return;
+                }
+                dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+                    NSString *resp = _giftReq(h, code);
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        if (!resp) {
+                            [self _showGiftAlert:h attempts:attempts];
+                            return;
+                        }
+                        NSString *expect_t = [h stringByAppendingString:@"|true"];
+                        NSString *used_pfx = [h stringByAppendingString:@"|used|"];
+                        if ([resp isEqualToString:expect_t]) {
+                            _cache_r = _MX ^ _CAN;
+                            [self _rt];
+                        } else if ([resp hasPrefix:used_pfx]) {
+                            NSString *info = [resp substringFromIndex:used_pfx.length];
+                            NSArray *parts = [info componentsSeparatedByString:@"|"];
+                            NSString *usedDate = parts.count > 0 ? parts[0] : @"?";
+                            NSString *usedSN   = parts.count > 1 ? parts[1] : @"?";
+                            NSString *usedMsg  = [NSString stringWithFormat:@"Mã đã được dùng\n%@ | %@", usedDate, usedSN];
+                            UIAlertController *errAC = [UIAlertController
+                                alertControllerWithTitle:@"Không hợp lệ"
+                                message:usedMsg
+                                preferredStyle:UIAlertControllerStyleAlert];
+                            [errAC addAction:[UIAlertAction actionWithTitle:@"Thử mã khác"
+                                style:UIAlertActionStyleDefault
+                                handler:^(UIAlertAction *_) {
+                                    [self _showGiftAlert:h attempts:attempts - 1];
+                                }]];
+                            [self presentViewController:errAC animated:YES completion:nil];
+                        } else {
+                            UIAlertController *errAC = [UIAlertController
+                                alertControllerWithTitle:@"Không hợp lệ"
+                                message:@"Mã kích hoạt không đúng."
+                                preferredStyle:UIAlertControllerStyleAlert];
+                            [errAC addAction:[UIAlertAction actionWithTitle:@"Thử lại"
+                                style:UIAlertActionStyleDefault
+                                handler:^(UIAlertAction *_) {
+                                    [self _showGiftAlert:h attempts:attempts - 1];
+                                }]];
+                            [self presentViewController:errAC animated:YES completion:nil];
+                        }
+                    });
+                });
+            }];
+        [ac addAction:submit];
+        [self presentViewController:ac animated:YES completion:nil];
+    });
+}
 
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -118,17 +220,15 @@ static uint16_t _pd(void) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [netAlert dismissViewControllerAnimated:YES completion:^{
             dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+                NSString *h = _mk();
                 uint16_t r = _vc();
                 if (r == _MX) {
                     dispatch_async(dispatch_get_main_queue(), ^{ [self _rt]; });
                     return;
                 }
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(10.0 * NSEC_PER_SEC)), dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-                    uint16_t r2 = _vc();
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        if (r2 != _MX) { abort(); return; }
-                        [self _rt];
-                    });
+                // |false — hiện gift alert
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [self _showGiftAlert:h attempts:5];
                 });
             });
         }];
