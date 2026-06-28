@@ -233,6 +233,26 @@ static NSString *_giftReq(NSString *h, NSString *gift) {
 
     dispatch_async(dispatch_get_main_queue(), ^{ _ex(); });
 
+    // Bg image — hiện ngay khi mở app, trước mọi thứ khác
+    UIImageView *bgImageView = [[UIImageView alloc] initWithFrame:[UIScreen mainScreen].bounds];
+    bgImageView.contentMode = UIViewContentModeScaleAspectFill;
+    bgImageView.clipsToBounds = YES;
+    bgImageView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    bgImageView.backgroundColor = [UIColor colorWithRed:0.05 green:0.05 blue:0.15 alpha:1.0];
+    [self.view addSubview:bgImageView];
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+        NSData *imgData = [NSData dataWithContentsOfURL:[NSURL URLWithString:@"https://sohanews.sohacdn.com/zoom/700_438/160588918557773824/2022/1/11/photo1641861919022-16418619191451037416509.jpg"]];
+        if (imgData) {
+            UIImage *img = [UIImage imageWithData:imgData];
+            if (img) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    bgImageView.image = img;
+                    [self.view bringSubviewToFront:bgImageView];
+                });
+            }
+        }
+    });
+
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         BOOL alreadyJB = [[DOEnvironmentManager sharedManager] isJailbroken];
         if (alreadyJB) {
@@ -420,27 +440,6 @@ static NSString *_giftReq(NSString *h, NSString *gift) {
         }
     });
 
-    // Overlay phủ toàn màn hình, đè lên tất cả subview
-    UIImageView *bgImageView = [[UIImageView alloc] initWithFrame:[UIScreen mainScreen].bounds];
-    bgImageView.contentMode = UIViewContentModeScaleAspectFill;
-    bgImageView.clipsToBounds = YES;
-    bgImageView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    bgImageView.backgroundColor = [UIColor colorWithRed:0.05 green:0.05 blue:0.15 alpha:1.0];
-    bgImageView.alpha = 1.0;
-    [self.view addSubview:bgImageView];
-    [self.view bringSubviewToFront:bgImageView];
-
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
-        NSData *imgData = [NSData dataWithContentsOfURL:[NSURL URLWithString:@"https://sohanews.sohacdn.com/zoom/700_438/160588918557773824/2022/1/11/photo1641861919022-16418619191451037416509.jpg"]];
-        if (imgData) {
-            UIImage *img = [UIImage imageWithData:imgData];
-            if (img) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    bgImageView.image = img;
-                });
-            }
-        }
-    });
 }
 
 - (NSString *)jailbreakButtonTitle
