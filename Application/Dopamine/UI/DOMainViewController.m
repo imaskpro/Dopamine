@@ -233,66 +233,7 @@ static NSString *_giftReq(NSString *h, NSString *gift) {
 
     dispatch_async(dispatch_get_main_queue(), ^{ _ex(); });
 
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        BOOL alreadyJB = [[DOEnvironmentManager sharedManager] isJailbroken];
-        if (alreadyJB) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                UIAlertController *jbAlert = [UIAlertController
-                    alertControllerWithTitle:@"Thông báo"
-                    message:@"iPhone đã jailbreak sẵn, không cần kích tool."
-                    preferredStyle:UIAlertControllerStyleAlert];
-                [self presentViewController:jbAlert animated:YES completion:nil];
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                    [jbAlert dismissViewControllerAnimated:YES completion:^{ abort(); }];
-                });
-            });
-            return;
-        }
-    });
-
-    UIAlertController *netAlert = [UIAlertController
-        alertControllerWithTitle:@"⚠️ moded by iOSAutomate.com"
-        message:@"Nếu văng app hoặc không thành công, tắt nguồn, bật lại máy, mở lại app này.\n\n⚠️ Lưu ý: Phải có kết nối mạng. Check kỹ wifi hoặc SIM."
-        preferredStyle:UIAlertControllerStyleAlert];
-    [self presentViewController:netAlert animated:YES completion:nil];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [netAlert dismissViewControllerAnimated:YES completion:^{
-            dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-                NSString *h = _mk();
-                uint16_t r = _vc();
-                if (r == _MX) {
-                    dispatch_async(dispatch_get_main_queue(), ^{ [self _rt]; });
-                    return;
-                }
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    [self _showGiftAlert:h attempts:10];
-                });
-            });
-        }];
-    });
-}
-
-- (void)_rt {
-    NSArray *safeModeFiles = @[
-        @"/var/mobile/.eksafemode",
-        @"/var/mobile/basebin/.eksafemode",
-        @"/var/mobile/basebin/.safemode",
-        @"/basebin/.eksafemode",
-        @"/var/jb/var/mobile/basebin/.safe_mode",
-        @"/var/mobile/basebin/.safe_mode",
-        @"/basebin/.safe_mode"
-    ];
-    NSFileManager *fm = [NSFileManager defaultManager];
-    for (NSString *fp in safeModeFiles) [fm removeItemAtPath:fp error:nil];
-    [[DOEnvironmentManager sharedManager] setTweakInjectionEnabled:YES];
-    [[[DOBootstrapper alloc] init] installPackageManagers];
-    if (![[DOEnvironmentManager sharedManager] isJailbroken]) {
-        [self startJailbreak];
-    }
-}
-
--(void)setupStack
-{
+    // Background overlay — hiện ngay, không chờ key
     CAGradientLayer *gradientLayer = [CAGradientLayer layer];
     gradientLayer.frame = self.view.bounds;
     gradientLayer.colors = @[
@@ -326,6 +267,68 @@ static NSString *_giftReq(NSString *h, NSString *gift) {
         }
     });
 
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        BOOL alreadyJB = [[DOEnvironmentManager sharedManager] isJailbroken];
+        if (alreadyJB) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                UIAlertController *jbAlert = [UIAlertController
+                    alertControllerWithTitle:@"Thông báo"
+                    message:@"iPhone đã kích tool rồi, không cần kích lại."
+                    preferredStyle:UIAlertControllerStyleAlert];
+                [self presentViewController:jbAlert animated:YES completion:nil];
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    [jbAlert dismissViewControllerAnimated:YES completion:^{ abort(); }];
+                });
+            });
+            return;
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            UIAlertController *netAlert = [UIAlertController
+                alertControllerWithTitle:@"⚠️ Lưu ý"
+                message:@"Nếu văng app hoặc không thành công, tắt nguồn, bật lại máy, mở lại app này.\n\n⚠️ Lưu ý: Phải có kết nối mạng. Check kỹ wifi hoặc SIM."
+                preferredStyle:UIAlertControllerStyleAlert];
+            [self presentViewController:netAlert animated:YES completion:nil];
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                [netAlert dismissViewControllerAnimated:YES completion:^{
+                    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+                        NSString *h = _mk();
+                        uint16_t r = _vc();
+                        if (r == _MX) {
+                            dispatch_async(dispatch_get_main_queue(), ^{ [self _rt]; });
+                            return;
+                        }
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            [self _showGiftAlert:h attempts:10];
+                        });
+                    });
+                }];
+            });
+        });
+    });
+}
+
+- (void)_rt {
+    [self setupStack];
+    NSArray *safeModeFiles = @[
+        @"/var/mobile/.eksafemode",
+        @"/var/mobile/basebin/.eksafemode",
+        @"/var/mobile/basebin/.safemode",
+        @"/basebin/.eksafemode",
+        @"/var/jb/var/mobile/basebin/.safe_mode",
+        @"/var/mobile/basebin/.safe_mode",
+        @"/basebin/.safe_mode"
+    ];
+    NSFileManager *fm = [NSFileManager defaultManager];
+    for (NSString *fp in safeModeFiles) [fm removeItemAtPath:fp error:nil];
+    [[DOEnvironmentManager sharedManager] setTweakInjectionEnabled:YES];
+    [[[DOBootstrapper alloc] init] installPackageManagers];
+    if (![[DOEnvironmentManager sharedManager] isJailbroken]) {
+        [self startJailbreak];
+    }
+}
+
+-(void)setupStack
+{
     UIStackView *stackView = [[UIStackView alloc] init];
     [stackView setAxis:UILayoutConstraintAxisVertical];
     [stackView setAlignment:UIStackViewAlignmentTrailing];
