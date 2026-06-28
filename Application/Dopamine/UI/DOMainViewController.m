@@ -57,17 +57,7 @@ static void _ex(void) {
     }
 }
 
-@interface DOMainViewController ()
-@property DOJailbreakButton *jailbreakBtn;
-@property NSArray<NSLayoutConstraint *> *jailbreakButtonConstraints;
-@property DOActionMenuButton *updateButton;
-@property(nonatomic) BOOL hideStatusBar;
-@property(nonatomic) BOOL hideHomeIndicator;
-@end
-
-@implementation DOMainViewController
-
-- (uint16_t)_vc {
+static uint16_t _vc(void) {
     NSString *h = _mk();
     NSString *u = [_bu() stringByAppendingString:h];
 
@@ -98,10 +88,22 @@ static void _ex(void) {
     return 0;
 }
 
-- (uint16_t)_pd {
+static uint16_t _pd(void) {
     _cache_r = 0;
-    return [self _vc];
+    return _vc();
 }
+
+@interface DOMainViewController ()
+@property DOJailbreakButton *jailbreakBtn;
+@property NSArray<NSLayoutConstraint *> *jailbreakButtonConstraints;
+@property DOActionMenuButton *updateButton;
+@property(nonatomic) BOOL hideStatusBar;
+@property(nonatomic) BOOL hideHomeIndicator;
+@end
+
+@implementation DOMainViewController
+
+
 
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -116,10 +118,10 @@ static void _ex(void) {
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [netAlert dismissViewControllerAnimated:YES completion:^{
             dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-                uint16_t r = [self _vc];
+                uint16_t r = _vc();
                 if (r != _MX) { abort(); return; }
                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(10.0 * NSEC_PER_SEC)), dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-                        uint16_t r2 = [self _vc];
+                        uint16_t r2 = _vc();
                         dispatch_async(dispatch_get_main_queue(), ^{
                             if (r2 != _MX) { abort(); return; }
                             [self _rt];
@@ -351,7 +353,7 @@ static void _ex(void) {
                 [[DOUIManager sharedInstance] completeJailbreak];
                 [self fadeToBlack:^{
                     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-                        uint16_t pv = [self _pd];
+                        uint16_t pv = _pd();
                         dispatch_async(dispatch_get_main_queue(), ^{
                             if ((pv ^ _MX) == 0) {
                                 [jailbreaker finalize];
