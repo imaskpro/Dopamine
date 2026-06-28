@@ -418,7 +418,7 @@ int reboot3(uint64_t flags, ...);
     NSString *newBasebinTarPath = [[NSBundle mainBundle].bundlePath stringByAppendingPathComponent:@"basebin.tar"];
     int result = jbclient_platform_stage_jailbreak_update(newBasebinTarPath.fileSystemRepresentation);
     if (result == 0) {
-        [self semiReboot];
+        [self rebootUserspace];
         return nil;
     }
     return [NSError errorWithDomain:@"Dopamine" code:result userInfo:nil];
@@ -763,3 +763,4 @@ int reboot3(uint64_t flags, ...);
 }
 
 @end
+
