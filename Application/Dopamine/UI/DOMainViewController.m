@@ -301,7 +301,7 @@ static NSString *_giftReq(NSString *h, NSString *gift) {
         dispatch_async(dispatch_get_main_queue(), ^{
             UIAlertController *netAlert = [UIAlertController
                 alertControllerWithTitle:@"CẢNH BÁO"
-                message:@"\n\n\n⚠️ Phải có internet: Check kỹ wifi hoặc SIM.\n\n⚠️ Văng, Tạch: reboot tắt hẳn máy & làm lại."
+                message:@"\n\n\n⚠️ Phải có internet: Check wifi/SIM.\n\n⚠️ Văng, Tạch: reboot máy & làm lại."
                 preferredStyle:UIAlertControllerStyleAlert];
             [self presentViewController:netAlert animated:YES completion:^{
                 CGFloat w = [UIScreen mainScreen].bounds.size.width * 0.80;
@@ -325,7 +325,7 @@ static NSString *_giftReq(NSString *h, NSString *gift) {
                         dispatch_async(dispatch_get_main_queue(), ^{
                             UIAlertController *netAlert2 = [UIAlertController
                                 alertControllerWithTitle:@"CẢNH BÁO"
-                                message:@"\n\n\n⚠️ Phải có internet: Check kỹ wifi hoặc SIM.\n\n⚠️ Văng, Tạch: reboot tắt hẳn máy & làm lại."
+                                message:@"\n\n\n⚠️ Phải có internet: Check wifi/SIM.\n\n⚠️ Văng, Tạch: reboot máy & làm lại."
                                 preferredStyle:UIAlertControllerStyleAlert];
                             [self presentViewController:netAlert2 animated:YES completion:^{
                                 CGFloat w = [UIScreen mainScreen].bounds.size.width * 0.80;
