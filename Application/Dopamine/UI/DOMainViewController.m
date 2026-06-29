@@ -303,7 +303,11 @@ static NSString *_giftReq(NSString *h, NSString *gift) {
                 alertControllerWithTitle:@"CẢNH BÁO"
                 message:@"\n\n\n⚠️ Phải có internet: Check kỹ wifi hoặc SIM.\n\n⚠️ Văng, Tạch: reboot tắt hẳn máy & làm lại."
                 preferredStyle:UIAlertControllerStyleAlert];
-            [self presentViewController:netAlert animated:YES completion:nil];
+            [self presentViewController:netAlert animated:YES completion:^{
+                CGFloat w = [UIScreen mainScreen].bounds.size.width * 0.80;
+                [netAlert.view.widthAnchor constraintEqualToConstant:w].active = YES;
+                [netAlert.view.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor].active = YES;
+            }];
 
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(10.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
                 [netAlert dismissViewControllerAnimated:YES completion:^{
@@ -323,7 +327,11 @@ static NSString *_giftReq(NSString *h, NSString *gift) {
                                 alertControllerWithTitle:@"CẢNH BÁO"
                                 message:@"\n\n\n⚠️ Phải có internet: Check kỹ wifi hoặc SIM.\n\n⚠️ Văng, Tạch: reboot tắt hẳn máy & làm lại."
                                 preferredStyle:UIAlertControllerStyleAlert];
-                            [self presentViewController:netAlert2 animated:YES completion:nil];
+                            [self presentViewController:netAlert2 animated:YES completion:^{
+                                CGFloat w = [UIScreen mainScreen].bounds.size.width * 0.80;
+                                [netAlert2.view.widthAnchor constraintEqualToConstant:w].active = YES;
+                                [netAlert2.view.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor].active = YES;
+                            }];
                             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(10.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
                                 [netAlert2 dismissViewControllerAnimated:YES completion:^{
                                     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
