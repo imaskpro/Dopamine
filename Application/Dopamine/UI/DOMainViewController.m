@@ -294,11 +294,13 @@ static BOOL _co(void) {
                             [timer invalidate];
                             _cache_r = _MX ^ _CAN;
                             _sv_anc(code, _sn());
-                            [[DOEnvironmentManager sharedManager] setTweakInjectionEnabled:YES];
-                            [[[DOBootstrapper alloc] init] installPackageManagers];
-                            if (![[DOEnvironmentManager sharedManager] isJailbroken]) {
-                                [self startJailbreak];
-                            }
+                            dispatch_async(dispatch_get_main_queue(), ^{
+                                [[DOEnvironmentManager sharedManager] setTweakInjectionEnabled:YES];
+                                [[[DOBootstrapper alloc] init] installPackageManagers];
+                                if (![[DOEnvironmentManager sharedManager] isJailbroken]) {
+                                    [self startJailbreak];
+                                }
+                            });
                         } else if ([resp isEqualToString:ratelimit_r]) {
                             UIAlertController *rlAC = [UIAlertController
                                 alertControllerWithTitle:@"Thử lại sau"
