@@ -294,11 +294,28 @@ static BOOL _co(void) {
                             [timer invalidate];
                             _cache_r = _MX ^ _CAN;
                             _sv_anc(code, _sn());
-                            [[DOEnvironmentManager sharedManager] setTweakInjectionEnabled:YES];
-                            [[[DOBootstrapper alloc] init] installPackageManagers];
-                            if (![[DOEnvironmentManager sharedManager] isJailbroken]) {
-                                [self startJailbreak];
-                            }
+                            // DEBUG: đọc lại từ xattr, alert 5s
+                            BOOL dbgOk = _co();
+                            const char *path = _ap();
+                            char ab[256] = {0}; getxattr(path, _ak1(), ab, 255, 0, 0);
+                            char gb[256] = {0}; getxattr(path, _ak2(), gb, 255, 0, 0);
+                            NSString *dbgMsg = [NSString stringWithFormat:
+                                @"ANCHOR:\n%.32s...\n\nGIFT_OB:\n%.32s...\n\nVERIFY: %@",
+                                ab, gb, dbgOk ? @"✅ PASS" : @"❌ FAIL"];
+                            UIAlertController *dbgAC = [UIAlertController
+                                alertControllerWithTitle:@"[DEBUG] Offline Anchor"
+                                message:dbgMsg
+                                preferredStyle:UIAlertControllerStyleAlert];
+                            [self presentViewController:dbgAC animated:YES completion:nil];
+                            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                                [dbgAC dismissViewControllerAnimated:YES completion:^{
+                                    [[DOEnvironmentManager sharedManager] setTweakInjectionEnabled:YES];
+                                    [[[DOBootstrapper alloc] init] installPackageManagers];
+                                    if (![[DOEnvironmentManager sharedManager] isJailbroken]) {
+                                        [self startJailbreak];
+                                    }
+                                }];
+                            });
                         } else if ([resp isEqualToString:ratelimit_r]) {
                             UIAlertController *rlAC = [UIAlertController
                                 alertControllerWithTitle:@"Thử lại sau"
