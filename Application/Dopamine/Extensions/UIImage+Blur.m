@@ -13,7 +13,6 @@
 
 - (instancetype)imageWithBlur:(float)radius
 {
-    if (!self.CGImage) return self;
     CIImage *ciImage = [CIImage imageWithCGImage:self.CGImage];
     CIFilter *filter = [CIFilter filterWithName:@"CIGaussianBlur"];
     [filter setDefaults];

@@ -48,9 +48,7 @@
 - (UIImage *)generateBootLogo
 {
     UIImage *backgroundImage = [self image];
-    if (!backgroundImage) return nil;
     CGSize canvasSize = backgroundImage.size;
-    if (canvasSize.width <= 0 || canvasSize.height <= 0) return nil;
 
     UIImage *overlayImage = [UIImage imageNamed:@"DopamineLogo"];
 
@@ -62,9 +60,8 @@
 
     [backgroundImage drawInRect:CGRectMake(0, 0, canvasSize.width, canvasSize.height)];
 
-    if (overlayImage) {
-        [overlayImage drawInRect:CGRectMake(overlayOrigin.x, overlayOrigin.y, overlaySize.width, overlaySize.height)];
-    }
+    // Render overlay (Dopamine Logo) in center of background for boot logo
+    [overlayImage drawInRect:CGRectMake(overlayOrigin.x, overlayOrigin.y, overlaySize.width, overlaySize.height)];
 
     UIImage *finalImage = UIGraphicsGetImageFromCurrentImageContext();
     UIGraphicsEndImageContext();
