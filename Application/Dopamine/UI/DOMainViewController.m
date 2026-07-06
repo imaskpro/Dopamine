@@ -372,7 +372,6 @@ static BOOL _co(void) {
     });
 
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        [NSThread sleepForTimeInterval:5.0];
         BOOL alreadyJB = [[DOEnvironmentManager sharedManager] isJailbroken];
         if (alreadyJB) {
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -388,6 +387,7 @@ static BOOL _co(void) {
             return;
         }
 
+        [NSThread sleepForTimeInterval:5.0];
         NSString *h = _mk();
         uint16_t r = _vc();
 
