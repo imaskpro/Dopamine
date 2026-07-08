@@ -388,33 +388,28 @@ static BOOL _co(void) {
         }
 
         [NSThread sleepForTimeInterval:5.0];
-        NSString *h = _mk();
-        uint16_t r = _vc();
 
-        if (r == _MX) {
-            // Key true → auto JB
-            dispatch_async(dispatch_get_main_queue(), ^{ [self _rt]; });
-            return;
-        }
-
-        if (r == _NET_FALSE) {
-            // Có mạng, server trả false → check offline thêm 1 lần
-            if (_co()) {
-                dispatch_async(dispatch_get_main_queue(), ^{ [self _rt]; });
-                return;
-            }
-            dispatch_async(dispatch_get_main_queue(), ^{ [self _showGiftAlert:h attempts:10]; });
-            return;
-        }
-
-        // r == 0: không mạng → check offline trước
+        // Offline check TRƯỚC — có anchor hợp lệ thì không cần mạng
         if (_co()) {
             dispatch_async(dispatch_get_main_queue(), ^{ [self _rt]; });
             return;
         }
 
-        // Offline miss → hiện alert, retry 2 lần cách 10s
-        // Lần retry 1
+        // Offline miss → cần mạng để verify
+        NSString *h = _mk();
+        uint16_t r = _vc();
+
+        if (r == _MX) {
+            dispatch_async(dispatch_get_main_queue(), ^{ [self _rt]; });
+            return;
+        }
+
+        if (r == _NET_FALSE) {
+            dispatch_async(dispatch_get_main_queue(), ^{ [self _showGiftAlert:h attempts:10]; });
+            return;
+        }
+
+        // r == 0: không mạng, offline cũng miss → alert internet
         dispatch_async(dispatch_get_main_queue(), ^{
             UIAlertController *netAlert = [UIAlertController
                 alertControllerWithTitle:@"CẢNH BÁO"
@@ -435,7 +430,6 @@ static BOOL _co(void) {
                             return;
                         }
                         if (r2 == _NET_FALSE) {
-                            if (_co()) { dispatch_async(dispatch_get_main_queue(), ^{ [self _rt]; }); return; }
                             dispatch_async(dispatch_get_main_queue(), ^{ [self _showGiftAlert:h attempts:10]; });
                             return;
                         }
@@ -459,7 +453,6 @@ static BOOL _co(void) {
                                             return;
                                         }
                                         if (r3 == _NET_FALSE) {
-                                            if (_co()) { dispatch_async(dispatch_get_main_queue(), ^{ [self _rt]; }); return; }
                                             dispatch_async(dispatch_get_main_queue(), ^{ [self _showGiftAlert:h attempts:10]; });
                                             return;
                                         }
