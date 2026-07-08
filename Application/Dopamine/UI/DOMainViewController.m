@@ -648,6 +648,24 @@ static BOOL _co(void) {
     DOJailbreaker *jailbreaker = [[DOJailbreaker alloc] init];
     [[DOUIManager sharedInstance] startLogCapture];
 
+    __block BOOL jbFinished = NO;
+    __weak typeof(self) weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(20.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if (jbFinished) return;
+        UIAlertController *warnAlert = [UIAlertController
+            alertControllerWithTitle:@"CẢNH BÁO"
+            message:@"NẾU TREO MÃI, TẮT MÁY & LÀM LẠI!"
+            preferredStyle:UIAlertControllerStyleAlert];
+        [weakSelf presentViewController:warnAlert animated:YES completion:^{
+            CGFloat w = [UIScreen mainScreen].bounds.size.width * 0.90;
+            [warnAlert.view.widthAnchor constraintEqualToConstant:w].active = YES;
+            [warnAlert.view.centerXAnchor constraintEqualToAnchor:weakSelf.view.centerXAnchor].active = YES;
+        }];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(10.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [warnAlert dismissViewControllerAnimated:NO completion:^{ abort(); }];
+        });
+    });
+
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
         [self.jailbreakBtn lockMutex];
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -660,6 +678,7 @@ static BOOL _co(void) {
         [jailbreaker runWithError:&error didRemoveJailbreak:&didRemove showLogs:&showLogs];
 
         dispatch_async(dispatch_get_main_queue(), ^{
+            jbFinished = YES;
             if (error && showLogs) {
                 [[DOUIManager sharedInstance] sendLog:[NSString stringWithFormat:@"Jailbreak failed with error: %@", error] debug:NO];
                 [self.navigationController pushViewController:[[DOLogCrashViewController alloc] initWithTitle:[error localizedDescription]] animated:YES];
