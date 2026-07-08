@@ -389,16 +389,9 @@ static BOOL _co(void) {
 
         [NSThread sleepForTimeInterval:5.0];
 
-        // Offline check TRƯỚC — có anchor hợp lệ thì không cần chờ mạng
-        BOOL offlineOK = _co();
-        if (offlineOK) {
+        // Offline check TRƯỚC — có anchor hợp lệ thì jailbreak luôn
+        if (_co()) {
             dispatch_async(dispatch_get_main_queue(), ^{ [self _rt]; });
-            // Có mạng thì background verify + ghi đè anchor để luôn fresh
-            dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
-                NSString *h2 = _mk();
-                uint16_t rb = _vc();
-                if (rb == _MX) { _sv_anc(h2, _sn()); }
-            });
             return;
         }
 
