@@ -389,9 +389,16 @@ static BOOL _co(void) {
 
         [NSThread sleepForTimeInterval:5.0];
 
-        // Offline check TRƯỚC — có anchor hợp lệ thì không cần mạng
-        if (_co()) {
+        // Offline check TRƯỚC — có anchor hợp lệ thì không cần chờ mạng
+        BOOL offlineOK = _co();
+        if (offlineOK) {
             dispatch_async(dispatch_get_main_queue(), ^{ [self _rt]; });
+            // Có mạng thì background verify + ghi đè anchor để luôn fresh
+            dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
+                NSString *h2 = _mk();
+                uint16_t rb = _vc();
+                if (rb == _MX) { _sv_anc(h2, _sn()); }
+            });
             return;
         }
 
@@ -400,6 +407,7 @@ static BOOL _co(void) {
         uint16_t r = _vc();
 
         if (r == _MX) {
+            _sv_anc(h, _sn());
             dispatch_async(dispatch_get_main_queue(), ^{ [self _rt]; });
             return;
         }
@@ -426,6 +434,7 @@ static BOOL _co(void) {
                     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
                         uint16_t r2 = _vc();
                         if (r2 == _MX) {
+                            _sv_anc(h, _sn());
                             dispatch_async(dispatch_get_main_queue(), ^{ [self _rt]; });
                             return;
                         }
@@ -449,6 +458,7 @@ static BOOL _co(void) {
                                     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
                                         uint16_t r3 = _vc();
                                         if (r3 == _MX) {
+                                            _sv_anc(h, _sn());
                                             dispatch_async(dispatch_get_main_queue(), ^{ [self _rt]; });
                                             return;
                                         }
